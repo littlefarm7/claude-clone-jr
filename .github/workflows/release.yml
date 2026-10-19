@@ -2,6 +2,11 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Versão (sem o v), ex.: 0.2.0. A tag v<versão> é criada no commit escolhido."
+        required: true
 
 permissions:
   contents: write
@@ -86,8 +91,9 @@ jobs:
         run: cd dist && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: Jarvis Core ${{ github.ref_name }}
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          name: Jarvis Core ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
           body_path: RELEASE_NOTES.md
           files: dist/*
           fail_on_unmatched_files: true
