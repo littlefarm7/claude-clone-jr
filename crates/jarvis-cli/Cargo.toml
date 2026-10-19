@@ -19,6 +19,7 @@ tokio.workspace = true
 tokio-util.workspace = true
 chrono.workspace = true
 tracing.workspace = true
+libc = "0.2"
 clap = { version = "4", features = ["derive"] }
 toml.workspace = true
 serde.workspace = true

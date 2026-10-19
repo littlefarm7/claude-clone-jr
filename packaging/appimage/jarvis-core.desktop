@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Jarvis Core
+GenericName=Agente de IA
+Comment=Agente autônomo local-first: arquivos, terminal, web, documentos e mídia
+Exec=AppRun
+Icon=jarvis-core
+Terminal=false
+Categories=Utility;Development;
+Keywords=IA;agente;LLM;assistente;automação;
+StartupWMClass=jarvis-core

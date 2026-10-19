@@ -1,0 +1,18 @@
+#!/bin/sh
+# Jarvis Core AppImage entry point.
+#   ./Jarvis.AppImage            -> interface gráfica (ou CLI se não houver display)
+#   ./Jarvis.AppImage <args>     -> CLI (ex.: run "...", doctor, models)
+#   ./Jarvis.AppImage gui        -> força a interface gráfica
+HERE="$(dirname "$(readlink -f "$0")")"
+export PATH="$HERE/usr/bin:$PATH"
+if [ -d "$HERE/usr/lib" ]; then
+  export LD_LIBRARY_PATH="$HERE/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+fi
+if [ "$1" = "gui" ]; then
+  shift
+  exec "$HERE/usr/bin/jarvis-gui" "$@"
+fi
+if [ "$#" -gt 0 ] || { [ -z "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ]; }; then
+  exec "$HERE/usr/bin/jarvis" "$@"
+fi
+exec "$HERE/usr/bin/jarvis-gui"

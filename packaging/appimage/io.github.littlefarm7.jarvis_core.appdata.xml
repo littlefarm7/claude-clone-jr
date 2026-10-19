@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.littlefarm7.jarvis_core</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <name>Jarvis Core</name>
+  <summary>Agente de IA autônomo e local-first</summary>
+  <description>
+    <p>Agente que planeja, executa e verifica tarefas usando arquivos, terminal, web, documentos e multimídia, com modelos locais (llama.cpp) ou APIs, permissões por ferramenta e auditoria.</p>
+  </description>
+  <launchable type="desktop-id">jarvis-core.desktop</launchable>
+  <url type="homepage">https://github.com/littlefarm7/claude-clone-jr</url>
+  <content_rating type="oars-1.1"/>
+</component>

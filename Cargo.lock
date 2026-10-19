@@ -2251,6 +2251,7 @@ dependencies = [
  "jarvis-core",
  "jarvis-llm",
  "jarvis-tools",
+ "libc",
  "serde",
  "serde_json",
  "tempfile",

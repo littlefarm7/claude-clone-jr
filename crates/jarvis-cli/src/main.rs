@@ -207,6 +207,11 @@ pub enum ConsentCmd {
 
 #[tokio::main]
 async fn main() {
+    // Behave like a normal Unix tool when piped into `head`.
+    #[cfg(unix)]
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::try_from_env("JARVIS_LOG").unwrap_or_else(|_| "warn".into()))
         .with_writer(std::io::stderr)

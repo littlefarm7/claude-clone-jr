@@ -116,3 +116,23 @@ async fn skills_are_discovered_and_loaded() {
     let out = tool.call(json!({"name": "relatorio-mensal"}), &context(dir.path())).await.unwrap();
     assert!(out.content.contains("Passo 1"));
 }
+
+#[tokio::test]
+async fn espeak_tts_and_tesseract_ocr_when_installed() {
+    let dir = tempfile::tempdir().unwrap();
+    let ctx = context(dir.path());
+    if have("espeak-ng") {
+        let out = jarvis_tools::voice::Speak.call(json!({"text": "Olá, eu sou o Jarvis.", "output": "ola.wav"}), &ctx).await.unwrap();
+        assert!(out.content.contains("espeak-ng"), "{}", out.content);
+        let wav = std::fs::read(dir.path().join("ola.wav")).unwrap();
+        assert_eq!(&wav[..4], b"RIFF");
+        assert!(wav.len() > 10_000);
+    }
+    if have("tesseract") && have("pdftoppm") {
+        // Render a PDF with known text, then OCR it.
+        let pdf = jarvis_tools::pdfgen::render(None, "# FATURA 2026\nTotal a pagar: 1234 reais\n");
+        std::fs::write(dir.path().join("scan.pdf"), pdf).unwrap();
+        let out = Ocr.call(json!({"path": "scan.pdf", "lang": "por"}), &ctx).await.unwrap();
+        assert!(out.content.contains("FATURA") && out.content.contains("1234"), "{}", out.content);
+    }
+}

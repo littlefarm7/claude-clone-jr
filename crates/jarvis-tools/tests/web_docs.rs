@@ -143,8 +143,21 @@ async fn latex_reports_missing_compiler_or_compiles() {
     let dir = tempfile::tempdir().unwrap();
     let ctx = context(dir.path());
     std::fs::write(dir.path().join("a.tex"), "\\documentclass{article}\\begin{document}Olá\\end{document}").unwrap();
+    let has_tex = ["tectonic", "latexmk", "pdflatex", "xelatex"].iter().any(|b| jarvis_tools::shell::which(b).is_some());
     match LatexCompile.call(json!({"path": "a.tex"}), &ctx).await {
-        Ok(out) => assert!(out.content.contains("PDF gerado") || out.is_error),
-        Err(e) => assert!(e.to_string().contains("nenhum compilador LaTeX")),
+        Ok(out) => {
+            assert!(has_tex);
+            assert!(out.content.contains("PDF gerado"), "{}", out.content);
+            let text = DocRead.call(json!({"path": "a.pdf"}), &ctx).await.unwrap();
+            assert!(text.content.contains("Ol"), "{}", text.content);
+            // A broken document reports the LaTeX error back to the model.
+            std::fs::write(dir.path().join("b.tex"), "\\documentclass{article}\\begin{document}\\undefinedmacro\\end{document}").unwrap();
+            let out = LatexCompile.call(json!({"path": "b.tex"}), &ctx).await.unwrap();
+            assert!(out.is_error && out.content.contains("Undefined control sequence"), "{}", out.content);
+        }
+        Err(e) => {
+            assert!(!has_tex);
+            assert!(e.to_string().contains("nenhum compilador LaTeX"));
+        }
     }
 }

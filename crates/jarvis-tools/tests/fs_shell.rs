@@ -93,3 +93,25 @@ async fn system_info_reports_real_values() {
     assert!(out.content.contains("Kernel:"));
     assert!(out.content.contains("MB livres"));
 }
+
+#[tokio::test]
+async fn bubblewrap_sandbox_confines_writes() {
+    if jarvis_tools::shell::which("bwrap").is_none() {
+        eprintln!("ignorado: bwrap ausente");
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let ctx = context(dir.path());
+    // Probe whether bwrap can create namespaces here (some containers forbid it).
+    let probe = Shell.call(json!({"command": "true"}), &ctx).await.unwrap();
+    if probe.is_error {
+        eprintln!("ignorado: bwrap sem permissão de namespaces neste ambiente: {}", probe.content);
+        return;
+    }
+    let target = outside.path().join("fuga.txt");
+    let out = Shell.call(json!({"command": format!("echo dentro > ok.txt; echo x > {}", target.display())}), &ctx).await.unwrap();
+    assert!(dir.path().join("ok.txt").exists(), "{}", out.content);
+    assert!(!target.exists(), "escrita fora do workspace deveria falhar no sandbox: {}", out.content);
+    assert!(out.content.contains("Read-only file system") || out.is_error, "{}", out.content);
+}
