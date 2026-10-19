@@ -33,7 +33,7 @@ install -m644 packaging/appimage/claudio-code.desktop "$APPDIR/claudio-code.desk
 install -m644 packaging/appimage/claudio-code.desktop "$APPDIR/usr/share/applications/"
 install -m644 packaging/appimage/claudio-code.svg "$APPDIR/claudio-code.svg"
 install -m644 packaging/appimage/claudio-code.svg "$APPDIR/usr/share/icons/hicolor/scalable/apps/"
-install -m644 packaging/appimage/io.github.littlefarm7.claudio_core.appdata.xml "$APPDIR/usr/share/metainfo/"
+install -m644 packaging/appimage/io.github.littlefarm7.claudio_code.appdata.xml "$APPDIR/usr/share/metainfo/"
 ln -sf claudio-code.svg "$APPDIR/.DirIcon"
 
 if [ -n "${LLAMA_SERVER_DIR:-}" ]; then
