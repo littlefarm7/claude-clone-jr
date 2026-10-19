@@ -27,6 +27,9 @@ pub struct Config {
     /// Set by `load` when the config file is readable by other users.
     #[serde(skip)]
     pub insecure_file: bool,
+    /// File this configuration was loaded from.
+    #[serde(skip)]
+    pub source: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -198,6 +201,7 @@ impl Default for Config {
             custom_tools: vec![],
             skills_dirs: vec!["~/.config/jarvis/skills".into()],
             insecure_file: false,
+            source: None,
         }
     }
 }
@@ -258,6 +262,7 @@ impl Config {
         let text = std::fs::read_to_string(path).with_context(|| format!("lendo {}", path.display()))?;
         let mut cfg: Config = toml::from_str(&text).with_context(|| format!("config inválida em {}", path.display()))?;
         cfg.insecure_file = file_is_shared(path);
+        cfg.source = Some(path.to_path_buf());
         if cfg.insecure_file {
             // Never trust inline secrets from a world/group-readable file.
             for m in &mut cfg.models {

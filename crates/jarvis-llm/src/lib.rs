@@ -4,6 +4,7 @@
 //! [`Message`]/[`Part`] types to each vendor's wire format.
 
 pub mod anthropic;
+pub mod embeddings;
 pub mod gemini;
 pub mod http;
 pub mod local;
