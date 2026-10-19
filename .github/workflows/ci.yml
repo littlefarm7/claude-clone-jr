@@ -1,34 +1,38 @@
 name: CI
 on:
   push:
+    branches: ["**"]
   pull_request:
+  workflow_call:
+
 jobs:
-  test:
+  lint:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.97.0
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
-      - name: Dependências de sistema
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Dependências (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y poppler-utils pandoc ffmpeg bubblewrap espeak-ng tesseract-ocr tesseract-ocr-por
-      - run: cargo fmt --all -- --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace
-  appimage:
-    runs-on: ubuntu-24.04
-    needs: test
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - run: pip install ziglang cargo-zigbuild
-      - run: ./scripts/build-appimage.sh
-      - run: APPIMAGE_EXTRACT_AND_RUN=1 ./dist/*.AppImage --version
-      - uses: actions/upload-artifact@v4
-        with:
-          name: appimage
-          path: dist/*.AppImage
+      - name: Testes
+        run: cargo test --workspace
+        env:
+          RUST_BACKTRACE: "1"

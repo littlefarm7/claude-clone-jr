@@ -117,14 +117,7 @@ impl Agent {
             .iter()
             .map(|p| p.display().to_string())
             .collect();
-        let os = std::fs::read_to_string("/etc/os-release")
-            .ok()
-            .and_then(|s| {
-                s.lines()
-                    .find(|l| l.starts_with("PRETTY_NAME="))
-                    .map(|l| l[12..].trim_matches('"').to_string())
-            })
-            .unwrap_or_else(|| std::env::consts::OS.into());
+        let os = jarvis_llm::platform::os_pretty_name();
         let mut s = format!(
             "Você é o Jarvis, um agente autônomo que roda no computador do usuário ({os}). \
 Data/hora: {now}. Idioma preferido: {lang}.\n\

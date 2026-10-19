@@ -9,6 +9,7 @@ pub mod gemini;
 pub mod http;
 pub mod local;
 pub mod openai;
+pub mod platform;
 pub mod router;
 pub mod scripted;
 pub mod types;

@@ -209,7 +209,8 @@ pub enum PathVerdict {
 
 impl PathGuard {
     pub fn from_config(cfg: &PermissionsConfig) -> Self {
-        let canon = |p: &PathBuf| std::fs::canonicalize(p).unwrap_or_else(|_| normalize(p));
+        let canon =
+            |p: &PathBuf| jarvis_llm::platform::canonicalize(p).unwrap_or_else(|_| normalize(p));
         let workspace: Vec<PathBuf> = cfg
             .workspace_roots
             .iter()
@@ -227,9 +228,20 @@ impl PathGuard {
                 ".netrc",
                 ".docker/config.json",
                 ".kube",
+                // macOS
+                "Library/Keychains",
+                "Library/Cookies",
+                // Windows
+                "AppData/Roaming/Microsoft/Credentials",
+                "AppData/Roaming/Microsoft/Protect",
+                "AppData/Local/Microsoft/Credentials",
             ] {
                 blocked.push(home.join(p));
             }
+        }
+        if cfg!(windows) {
+            let root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".into());
+            blocked.push(PathBuf::from(root).join("System32").join("config"));
         }
         blocked.push(crate::config::config_dir().join("secrets"));
         blocked.push(crate::config::data_dir().join("audit.jsonl"));
@@ -238,6 +250,13 @@ impl PathGuard {
             blocked.push(PathBuf::from(p));
         }
         blocked.extend(cfg.blocked_paths.iter().map(|p| expand(p)));
+        // Compare against canonical forms too (/var → /private/var on macOS, symlinked homes).
+        let canonical: Vec<PathBuf> = blocked
+            .iter()
+            .filter_map(|b| jarvis_llm::platform::canonicalize(b).ok())
+            .filter(|c| !blocked.contains(c))
+            .collect();
+        blocked.extend(canonical);
         Self {
             workspace,
             read_roots,
@@ -275,7 +294,7 @@ impl PathGuard {
                 _ => break,
             }
         }
-        let mut out = std::fs::canonicalize(&existing).unwrap_or(existing);
+        let mut out = jarvis_llm::platform::canonicalize(&existing).unwrap_or(existing);
         for t in tail.iter().rev() {
             out.push(t);
         }

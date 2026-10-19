@@ -1,3 +1,5 @@
+// Hide the console window on Windows release builds.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 //! `jarvis-gui` — desktop interface (egui) over the same core as the CLI.
 
 use std::sync::Arc;
@@ -770,6 +772,19 @@ impl eframe::App for App {
     }
 }
 
+fn window_icon() -> egui::IconData {
+    let img = image::load_from_memory(include_bytes!(
+        "../../../packaging/icons/jarvis-core-256.png"
+    ))
+    .map(|i| i.to_rgba8())
+    .unwrap_or_else(|_| image::RgbaImage::new(1, 1));
+    egui::IconData {
+        width: img.width(),
+        height: img.height(),
+        rgba: img.into_raw(),
+    }
+}
+
 fn main() -> eframe::Result<()> {
     let tokio = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -794,7 +809,8 @@ fn main() -> eframe::Result<()> {
             .with_title("Jarvis Core")
             .with_inner_size([1280.0, 800.0])
             .with_min_inner_size([800.0, 500.0])
-            .with_app_id("jarvis-core"),
+            .with_app_id("jarvis-core")
+            .with_icon(window_icon()),
         ..Default::default()
     };
     eframe::run_native(

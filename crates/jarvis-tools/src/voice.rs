@@ -38,7 +38,9 @@ pub fn status(cfg: &Config) -> (bool, bool) {
             .unwrap_or(false);
     let tts = (cfg.voice.piper_model.is_some()
         && (cfg.voice.piper_bin.is_some() || which("piper").is_some()))
-        || which("espeak-ng").is_some();
+        || which("espeak-ng").is_some()
+        || cfg!(windows)
+        || (cfg!(target_os = "macos") && which("say").is_some());
     (stt, tts)
 }
 
@@ -113,26 +115,27 @@ pub async fn speak(text: &str, out: &Path, ctx: &ToolContext) -> Result<String> 
             .map(expand)
             .or_else(|| which("piper"))
             .context("piper não encontrado")?;
-        let tmp = tempfile::tempdir()?;
-        let txt = tmp.path().join("in.txt");
-        std::fs::write(&txt, text)?;
-        // piper reads stdin; use sh redirection from a file we control (no interpolation of user text).
-        let a: Vec<String> = vec![
-            "-c".into(),
-            "\"$0\" --model \"$1\" --output_file \"$2\" < \"$3\"".into(),
-            bin.to_string_lossy().into(),
-            model.to_string_lossy().into(),
-            out.to_string_lossy().into(),
-            txt.to_string_lossy().into(),
-        ];
-        let r = run_command(
-            build_command("sh", &a, tmp.path(), ctx, false),
-            Duration::from_secs(600),
-            ctx,
-        )
-        .await?;
-        if !r.ok() {
-            bail!("piper falhou: {}", r.stderr);
+        // piper reads the text from stdin: pipe it directly (no shell, no interpolation).
+        use tokio::io::AsyncWriteExt;
+        let mut child = tokio::process::Command::new(bin)
+            .arg("--model")
+            .arg(&model)
+            .arg("--output_file")
+            .arg(out)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .context("falha ao iniciar o piper")?;
+        let mut stdin = child.stdin.take().unwrap();
+        stdin.write_all(text.as_bytes()).await?;
+        drop(stdin);
+        let o = tokio::time::timeout(Duration::from_secs(600), child.wait_with_output())
+            .await
+            .context("piper: tempo esgotado")??;
+        if !o.status.success() {
+            bail!("piper falhou: {}", String::from_utf8_lossy(&o.stderr));
         }
         return Ok("piper".into());
     }
@@ -161,6 +164,49 @@ pub async fn speak(text: &str, out: &Path, ctx: &ToolContext) -> Result<String> 
             bail!("espeak-ng falhou: {}", r.stderr);
         }
         return Ok("espeak-ng".into());
+    }
+    if cfg!(target_os = "macos") && which("say").is_some() {
+        // Built-in macOS speech synthesis.
+        let a: Vec<String> = vec![
+            "-o".into(),
+            out.to_string_lossy().into(),
+            "--data-format=LEI16@22050".into(),
+            "--".into(),
+            text.into(),
+        ];
+        let r = run_command(
+            build_command("say", &a, &ctx.guard.cwd(), ctx, false),
+            Duration::from_secs(300),
+            ctx,
+        )
+        .await?;
+        if !r.ok() {
+            bail!("say falhou: {}", r.stderr);
+        }
+        return Ok("say (macOS)".into());
+    }
+    if cfg!(windows) {
+        // Built-in Windows SAPI via System.Speech; text and path travel in env vars.
+        let script = "Add-Type -AssemblyName System.Speech; \
+            $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; \
+            $s.SetOutputToWaveFile($env:JARVIS_TTS_OUT); $s.Speak($env:JARVIS_TTS_TEXT); $s.Dispose()";
+        let a: Vec<String> = [
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            script,
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let mut cmd = build_command("powershell", &a, &ctx.guard.cwd(), ctx, false);
+        cmd.env("JARVIS_TTS_OUT", out).env("JARVIS_TTS_TEXT", text);
+        let r = run_command(cmd, Duration::from_secs(300), ctx).await?;
+        if !r.ok() || !out.exists() {
+            bail!("síntese de voz do Windows falhou: {}", r.stderr);
+        }
+        return Ok("SAPI (Windows)".into());
     }
     bail!("nenhum motor de voz: instale espeak-ng (sudo apt install espeak-ng) ou configure piper (docs/VOICE.md)")
 }

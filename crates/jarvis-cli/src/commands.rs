@@ -572,6 +572,15 @@ pub async fn consent(cli: &Cli, cmd: &ConsentCmd) -> Result<i32> {
 
 pub async fn doctor(cli: &Cli) -> Result<i32> {
     let cfg = load_config(cli)?;
+    let hint = |linux: &'static str, mac: &'static str, win: &'static str| -> &'static str {
+        if cfg!(target_os = "macos") {
+            mac
+        } else if cfg!(windows) {
+            win
+        } else {
+            linux
+        }
+    };
     let check = |ok: bool, label: &str, hint: &str| {
         if ok {
             println!("{} {label}", green("✓"));
@@ -614,55 +623,105 @@ pub async fn doctor(cli: &Cli) -> Result<i32> {
     check(
         llama,
         "llama-server (modelos locais)",
-        "→ compile o llama.cpp (veja README) ou defina local.llama_server",
+        hint(
+            "→ compile o llama.cpp (docs/MODELOS-LOCAIS.md) ou defina local.llama_server",
+            "→ brew install llama.cpp",
+            "→ winget install ggml.llamacpp (ou baixe o zip do llama.cpp) e defina local.llama_server",
+        ),
     );
-    check(
-        w("bwrap"),
-        "bubblewrap (isolamento do terminal)",
-        "→ sudo apt install bubblewrap",
-    );
+    let sandbox = jarvis_tools::shell::sandbox_available();
+    if cfg!(windows) {
+        println!(
+            "{} isolamento do terminal: não disponível no Windows (aprovação continua obrigatória)",
+            yellow("·")
+        );
+    } else {
+        check(
+            sandbox,
+            "isolamento do terminal (bubblewrap / sandbox-exec)",
+            hint(
+                "→ sudo apt install bubblewrap (e permita user namespaces)",
+                "→ sandbox-exec faz parte do macOS",
+                "",
+            ),
+        );
+    }
     check(
         w("pdftotext"),
-        "poppler-utils (leitura de PDF)",
-        "→ sudo apt install poppler-utils",
+        "poppler (leitura fiel de PDF; sem ele usa leitor interno)",
+        hint(
+            "→ sudo apt install poppler-utils",
+            "→ brew install poppler",
+            "→ choco install poppler",
+        ),
     );
     check(
         w("pandoc"),
         "pandoc (DOCX/PPTX ricos)",
-        "→ sudo apt install pandoc",
+        hint(
+            "→ sudo apt install pandoc",
+            "→ brew install pandoc",
+            "→ winget install JohnMacFarlane.Pandoc",
+        ),
     );
     check(
         w("soffice"),
         "LibreOffice (conversões)",
-        "→ sudo apt install libreoffice",
+        hint(
+            "→ sudo apt install libreoffice",
+            "→ brew install --cask libreoffice",
+            "→ winget install TheDocumentFoundation.LibreOffice",
+        ),
     );
     check(
         w("pdflatex") || w("xelatex") || w("tectonic"),
         "LaTeX",
-        "→ sudo apt install texlive-latex-recommended (ou tectonic)",
+        hint(
+            "→ sudo apt install texlive-latex-recommended (ou tectonic)",
+            "→ brew install tectonic",
+            "→ winget install MiKTeX.MiKTeX (ou tectonic)",
+        ),
     );
     check(
         w("ffmpeg") && w("ffprobe"),
-        "ffmpeg/ffprobe (áudio e vídeo)",
-        "→ sudo apt install ffmpeg",
+        "ffmpeg/ffprobe (áudio, vídeo e microfone)",
+        hint(
+            "→ sudo apt install ffmpeg",
+            "→ brew install ffmpeg",
+            "→ winget install Gyan.FFmpeg",
+        ),
+    );
+    check(
+        w("tesseract"),
+        "Tesseract (OCR)",
+        hint(
+            "→ sudo apt install tesseract-ocr tesseract-ocr-por",
+            "→ brew install tesseract tesseract-lang",
+            "→ winget install UB-Mannheim.TesseractOCR",
+        ),
     );
     check(
         w("whisper-cli") || w("whisper-cpp"),
         "whisper.cpp (transcrição)",
-        "→ compile whisper.cpp; veja docs/VOICE.md",
+        hint(
+            "→ compile whisper.cpp; veja docs/VOICE.md",
+            "→ brew install whisper-cpp",
+            "→ baixe o whisper.cpp; veja docs/VOICE.md",
+        ),
     );
     check(
-        w("piper") || w("espeak-ng"),
-        "piper/espeak-ng (síntese de voz)",
+        w("piper") || w("espeak-ng") || cfg!(windows) || (cfg!(target_os = "macos") && w("say")),
+        "síntese de voz (piper, espeak-ng, say ou SAPI)",
         "→ sudo apt install espeak-ng",
     );
     check(
-        ["chromium", "chromium-browser", "google-chrome"]
-            .iter()
-            .any(|b| w(b))
-            || cfg.web.chromium.is_some(),
-        "Chromium (navegador headless)",
-        "→ sudo apt install chromium",
+        jarvis_tools::web::find_chromium(&cfg).is_some(),
+        "Chromium/Chrome/Edge (navegador headless)",
+        hint(
+            "→ sudo apt install chromium",
+            "→ brew install --cask chromium",
+            "→ o Microsoft Edge já vem com o Windows",
+        ),
     );
     for key in ["ANTHROPIC_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY"] {
         check(
@@ -697,6 +756,12 @@ pub fn detach() -> Result<i32> {
     {
         use std::os::unix::process::CommandExt;
         cmd.process_group(0);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
+        cmd.creation_flags(0x0000_0008 | 0x0000_0200 | 0x0800_0000);
     }
     let child = cmd.spawn()?;
     println!(
@@ -808,9 +873,12 @@ pub async fn schedule(cli: &Cli, cmd: &ScheduleCmd) -> Result<i32> {
 pub async fn daemon(cli: Arc<Cli>, once: bool) -> Result<i32> {
     let lock = data_dir().join("daemon.pid");
     if let Ok(pid) = std::fs::read_to_string(&lock) {
-        if Path::new(&format!("/proc/{}", pid.trim())).exists()
-            && pid.trim() != std::process::id().to_string()
-        {
+        let other = pid
+            .trim()
+            .parse::<u32>()
+            .ok()
+            .filter(|p| *p != std::process::id());
+        if other.map(jarvis_llm::platform::pid_alive).unwrap_or(false) {
             bail!("daemon já em execução (pid {})", pid.trim());
         }
     }
@@ -895,43 +963,18 @@ pub async fn voice(cli: Arc<Cli>, cmd: &VoiceCmd) -> Result<i32> {
     let ctx = jarvis_tools::testutil::context_with(c2);
     match cmd {
         VoiceCmd::Transcribe { file, lang } => {
-            let p = std::fs::canonicalize(file)?;
+            let p = jarvis_llm::platform::canonicalize(file)?;
             println!("{}", jarvis_tools::voice::transcribe(&p, lang, &ctx).await?);
         }
         VoiceCmd::Say { text, out } => {
             let engine = jarvis_tools::voice::speak(&text.join(" "), out, &ctx).await?;
             println!("áudio em {} ({engine})", out.display());
-            for player in ["paplay", "aplay", "pw-play"] {
-                if jarvis_tools::shell::which(player).is_some() {
-                    let _ = tokio::process::Command::new(player).arg(out).status().await;
-                    break;
-                }
-            }
+            play_wav(out).await;
         }
         VoiceCmd::Listen { seconds } => {
-            if jarvis_tools::shell::which("arecord").is_none() {
-                bail!("arecord não encontrado (sudo apt install alsa-utils)");
-            }
             let wav = dir.path().join("mic.wav");
             println!("gravando {seconds} s…");
-            let st = tokio::process::Command::new("arecord")
-                .args([
-                    "-q",
-                    "-f",
-                    "S16_LE",
-                    "-r",
-                    "16000",
-                    "-c",
-                    "1",
-                    "-d",
-                    &seconds.to_string(),
-                ])
-                .arg(&wav)
-                .status()
-                .await?;
-            if !st.success() {
-                bail!("falha ao gravar do microfone");
-            }
+            record_mic(&wav, *seconds).await?;
             let text = jarvis_tools::voice::transcribe(&wav, "pt", &ctx).await?;
             println!("{} {text}", cyan("você disse:"));
             if !text.trim().is_empty() {
@@ -940,4 +983,68 @@ pub async fn voice(cli: Arc<Cli>, cmd: &VoiceCmd) -> Result<i32> {
         }
     }
     Ok(0)
+}
+
+/// Play a WAV file with the player available on this OS.
+async fn play_wav(path: &Path) {
+    use tokio::process::Command;
+    let status = if cfg!(target_os = "macos") {
+        Command::new("afplay").arg(path).status().await
+    } else if cfg!(windows) {
+        Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-Command",
+                "(New-Object Media.SoundPlayer $env:JARVIS_WAV).PlaySync()",
+            ])
+            .env("JARVIS_WAV", path)
+            .status()
+            .await
+    } else {
+        let Some(player) = ["paplay", "pw-play", "aplay"]
+            .into_iter()
+            .find(|p| jarvis_tools::shell::which(p).is_some())
+        else {
+            return;
+        };
+        Command::new(player).arg(path).status().await
+    };
+    if let Err(e) = status {
+        eprintln!("não foi possível tocar o áudio: {e}");
+    }
+}
+
+/// Record from the default microphone (16 kHz mono WAV).
+async fn record_mic(wav: &Path, seconds: u32) -> Result<()> {
+    use tokio::process::Command;
+    let secs = seconds.to_string();
+    let status = if cfg!(target_os = "linux") && jarvis_tools::shell::which("arecord").is_some() {
+        Command::new("arecord")
+            .args(["-q", "-f", "S16_LE", "-r", "16000", "-c", "1", "-d", &secs])
+            .arg(wav)
+            .status()
+            .await?
+    } else {
+        // macOS (AVFoundation) and Windows (DirectShow) through ffmpeg.
+        let ffmpeg = jarvis_tools::shell::which("ffmpeg")
+            .context("gravar do microfone requer ffmpeg (ou arecord no Linux)")?;
+        let input: Vec<&str> = if cfg!(target_os = "macos") {
+            vec!["-f", "avfoundation", "-i", ":0"]
+        } else if cfg!(windows) {
+            vec!["-f", "dshow", "-i", "audio=default"]
+        } else {
+            vec!["-f", "pulse", "-i", "default"]
+        };
+        Command::new(ffmpeg)
+            .args(["-hide_banner", "-loglevel", "error", "-y"])
+            .args(input)
+            .args(["-t", &secs, "-ar", "16000", "-ac", "1"])
+            .arg(wav)
+            .status()
+            .await?
+    };
+    if !status.success() {
+        bail!("falha ao gravar do microfone");
+    }
+    Ok(())
 }

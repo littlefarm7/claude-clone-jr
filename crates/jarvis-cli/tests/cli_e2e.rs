@@ -14,12 +14,13 @@ impl Drop for Server {
 fn start_mock() -> (Server, u16) {
     use std::io::BufRead;
     let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/mock_llm.py");
-    let mut child = Command::new("python3")
+    let python = if cfg!(windows) { "python" } else { "python3" };
+    let mut child = Command::new(python)
         .arg(script)
         .arg("0")
         .stdout(std::process::Stdio::piped())
         .spawn()
-        .expect("python3");
+        .expect("python");
     let mut line = String::new();
     std::io::BufReader::new(child.stdout.take().unwrap())
         .read_line(&mut line)
@@ -39,7 +40,7 @@ fn setup(port: u16) -> (tempfile::TempDir, PathBuf) {
         format!(
             r#"default_model = "mock"
 [permissions]
-workspace_roots = ["{ws}"]
+workspace_roots = ['{ws}']
 [[models]]
 name = "mock"
 provider = "openai_compat"
@@ -152,14 +153,22 @@ allowed_tools = ["write_file"]
 arquivo = "dados.csv"
 [[steps]]
 tool = "shell"
-args = { command = "wc -l < {{arquivo}}" }
+args = { command = "COUNT_CMD" }
 save_as = "linhas"
 [[steps]]
 tool = "write_file"
 args = { path = "contagem.txt", content = "{{linhas}}" }
 [[steps]]
 task = "oi"
-"#,
+"#
+        .replace(
+            "COUNT_CMD",
+            if cfg!(windows) {
+                "(Get-Content {{arquivo}}).Count"
+            } else {
+                "wc -l < {{arquivo}}"
+            },
+        ),
     )
     .unwrap();
     let out = jarvis(home.path(), &cfg, &["workflow", wf.to_str().unwrap()]);

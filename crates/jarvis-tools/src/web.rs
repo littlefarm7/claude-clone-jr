@@ -369,16 +369,21 @@ pub fn find_chromium(cfg: &Config) -> Option<PathBuf> {
     if let Some(p) = &cfg.web.chromium {
         return Some(jarvis_core::config::expand(p));
     }
-    for name in [
+    // Linux names, then the macOS app bundles / Windows installs found by `find_program`.
+    let names = [
         "chromium",
         "chromium-browser",
         "google-chrome",
         "google-chrome-stable",
         "brave-browser",
-    ] {
-        if let Some(p) = crate::shell::which(name) {
-            return Some(p);
-        }
+        "Google Chrome",
+        "Chromium",
+        "Microsoft Edge",
+        "chrome",
+        "msedge",
+    ];
+    if let Some(p) = jarvis_llm::platform::find_program(&names) {
+        return Some(p);
     }
     // Playwright-managed browsers.
     let base =
@@ -456,6 +461,7 @@ impl Tool for Browser {
             format!("--window-size={w},{h}"),
             "--virtual-time-budget=5000".into(),
         ];
+        #[cfg(unix)]
         if unsafe { libc::geteuid() } == 0 {
             a.push("--no-sandbox".into()); // Chromium refuses to run as root otherwise.
         }

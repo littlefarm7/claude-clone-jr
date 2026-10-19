@@ -1,0 +1,21 @@
+Jarvis Core para Windows
+========================
+
+1. Extraia o .zip numa pasta, por exemplo C:\Programas\Jarvis.
+2. Abra a interface: clique duas vezes em jarvis-gui.exe.
+3. Use a CLI no PowerShell: .\jarvis.exe doctor
+4. Opcional: adicione a pasta ao PATH para usar "jarvis" em qualquer terminal.
+
+O Windows SmartScreen pode avisar porque o executável não tem assinatura comercial.
+Clique em "Mais informações" > "Executar assim mesmo".
+
+Programas opcionais (instale com winget):
+  winget install ggml.llamacpp                      (modelos locais)
+  winget install Gyan.FFmpeg                        (áudio e vídeo)
+  winget install JohnMacFarlane.Pandoc              (DOCX/PPTX)
+  winget install TheDocumentFoundation.LibreOffice  (conversões)
+  winget install UB-Mannheim.TesseractOCR           (OCR)
+
+No Windows o terminal do agente usa o PowerShell. Não há isolamento (sandbox) de
+processos como no Linux/macOS: as aprovações continuam obrigatórias para escrita,
+execução e ações destrutivas. Veja SECURITY.md.

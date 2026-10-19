@@ -28,7 +28,10 @@ fn ext(p: &Path) -> String {
 }
 
 async fn run_quiet(program: &str, args: &[&str], timeout: u64) -> Result<std::process::Output> {
-    let mut c = tokio::process::Command::new(program);
+    let resolved = which(program).unwrap_or_else(|| PathBuf::from(program));
+    let mut c = tokio::process::Command::new(resolved);
+    #[cfg(windows)]
+    c.creation_flags(0x0800_0000);
     c.args(args)
         .env_clear()
         .envs(crate::shell::scrubbed_env())
@@ -42,7 +45,18 @@ async fn run_quiet(program: &str, args: &[&str], timeout: u64) -> Result<std::pr
 
 pub async fn pdf_text(p: &Path) -> Result<String> {
     if which("pdftotext").is_none() {
-        bail!("pdftotext não instalado (sudo apt install poppler-utils)");
+        // Pure-Rust fallback (Windows/macOS without poppler). Less faithful layout.
+        let path = p.to_path_buf();
+        let text = tokio::task::spawn_blocking(move || pdf_extract::extract_text(&path))
+            .await?
+            .map_err(|e| anyhow::anyhow!("não foi possível extrair o texto do PDF: {e} (instale poppler para melhor resultado)"))?;
+        if text.trim().is_empty() {
+            return Ok(
+                "(PDF sem texto extraível — provavelmente digitalizado; use a ferramenta ocr)"
+                    .into(),
+            );
+        }
+        return Ok(text);
     }
     let out = run_quiet(
         "pdftotext",
@@ -326,7 +340,12 @@ pub async fn soffice_convert(input: &Path, fmt: &str, outdir: &Path) -> Result<P
     }
     // A private profile avoids clashing with a running LibreOffice instance.
     let profile = tempfile::tempdir()?;
-    let profile_url = format!("-env:UserInstallation=file://{}", profile.path().display());
+    let profile_url = format!(
+        "-env:UserInstallation={}",
+        url::Url::from_directory_path(profile.path())
+            .map(|u| u.to_string())
+            .unwrap_or_default()
+    );
     let o = run_quiet(
         "soffice",
         &[

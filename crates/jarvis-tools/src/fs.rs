@@ -435,11 +435,22 @@ impl Tool for Grep {
 
 pub struct DeletePath;
 
-/// Move to the freedesktop trash so deletions are reversible.
+/// Move to the system trash (Recycle Bin on Windows, Finder trash on macOS,
+/// freedesktop.org trash on Linux) so deletions are reversible.
+#[cfg(any(target_os = "macos", windows))]
 pub fn move_to_trash(p: &Path) -> Result<PathBuf> {
-    let home = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .context("HOME não definido")?;
+    trash::delete(p)
+        .with_context(|| format!("não foi possível mover {} para a lixeira", p.display()))?;
+    Ok(PathBuf::from(if cfg!(windows) {
+        "Lixeira do Windows"
+    } else {
+        "Lixeira do macOS"
+    }))
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
+pub fn move_to_trash(p: &Path) -> Result<PathBuf> {
+    let home = jarvis_llm::platform::home_dir().context("diretório pessoal não encontrado")?;
     let trash = std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| home.join(".local/share"))

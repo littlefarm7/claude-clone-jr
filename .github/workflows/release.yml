@@ -1,0 +1,93 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  linux:
+    needs: checks
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.0
+      - uses: Swatinem/rust-cache@v2
+      - run: pip install ziglang cargo-zigbuild
+      - name: AppImage
+        run: ./scripts/build-appimage.sh
+      - name: Teste do AppImage
+        run: |
+          APPIMAGE_EXTRACT_AND_RUN=1 ./dist/*.AppImage --version
+          APPIMAGE_EXTRACT_AND_RUN=1 ./dist/*.AppImage doctor
+      - name: tar.gz
+        run: |
+          V=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          D=Jarvis_Core-$V-linux-x86_64
+          mkdir -p target/$D
+          cp target/x86_64-unknown-linux-gnu/release/jarvis target/x86_64-unknown-linux-gnu/release/jarvis-gui README.md LICENSE target/$D/
+          tar -C target -czf dist/$D.tar.gz $D
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*
+
+  macos:
+    needs: checks
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.0
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - run: ./scripts/build-macos.sh
+      - name: Teste do binário universal
+        run: |
+          lipo -info target/universal/jarvis
+          target/universal/jarvis --version
+          target/universal/jarvis doctor
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/*
+
+  windows:
+    needs: checks
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.0
+      - uses: Swatinem/rust-cache@v2
+      - run: pwsh -File scripts/build-windows.ps1
+      - name: Teste do executável
+        run: |
+          .\target\release\jarvis.exe --version
+          .\target\release\jarvis.exe doctor
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*
+
+  publish:
+    needs: [linux, macos, windows]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: cd dist && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Jarvis Core ${{ github.ref_name }}
+          body_path: RELEASE_NOTES.md
+          files: dist/*
+          fail_on_unmatched_files: true

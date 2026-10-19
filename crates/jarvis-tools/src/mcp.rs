@@ -32,7 +32,10 @@ pub struct McpClient {
 
 impl McpClient {
     pub async fn spawn(cfg: &McpServerConfig) -> Result<Self> {
-        let mut cmd = Command::new(jarvis_core::config::expand(&cfg.command));
+        // Resolve `npx` → `npx.cmd` on Windows, app-bundle paths on macOS, etc.
+        let expanded = jarvis_core::config::expand(&cfg.command);
+        let program = crate::shell::which(&expanded.to_string_lossy()).unwrap_or(expanded);
+        let mut cmd = Command::new(program);
         cmd.args(&cfg.args)
             .env_clear()
             .envs(crate::shell::scrubbed_env())

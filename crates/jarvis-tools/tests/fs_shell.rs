@@ -53,6 +53,10 @@ async fn write_read_edit_glob_grep_trash() {
 
     let home = tempfile::tempdir().unwrap();
     std::env::set_var("XDG_DATA_HOME", home.path());
+    if cfg!(any(target_os = "macos", windows)) {
+        // The system trash may be unavailable on CI runners; only check the guard.
+        return;
+    }
     let out = DeletePath
         .call(json!({"path":"docs/a.md"}), &ctx)
         .await
@@ -82,26 +86,30 @@ async fn shell_runs_with_scrubbed_env_and_timeout() {
     let dir = tempfile::tempdir().unwrap();
     let ctx = context(dir.path());
     std::env::set_var("JARVIS_TEST_API_KEY", "should-not-leak");
-    let out = Shell
-        .call(
-            json!({"command":"echo hi; pwd; echo ${JARVIS_TEST_API_KEY:-unset}; exit 3"}),
-            &ctx,
-        )
-        .await
-        .unwrap();
+    let cmd = if cfg!(windows) {
+        "Write-Output hi; (Get-Location).Path; if ($env:JARVIS_TEST_API_KEY) { 'leaked' } else { 'unset' }; exit 3"
+    } else {
+        "echo hi; pwd; echo ${JARVIS_TEST_API_KEY:-unset}; exit 3"
+    };
+    let out = Shell.call(json!({ "command": cmd }), &ctx).await.unwrap();
     assert!(out.is_error);
     assert!(out.content.contains("exit code: 3"));
     assert!(out.content.contains("hi"));
     assert!(out.content.contains("unset"), "{}", out.content);
-    assert!(out
-        .content
-        .contains(&dir.path().canonicalize().unwrap().display().to_string()));
+    assert!(out.content.contains(
+        &jarvis_llm::platform::canonicalize(dir.path())
+            .unwrap()
+            .display()
+            .to_string()
+    ));
     let t = std::time::Instant::now();
+    let cmd = if cfg!(windows) {
+        "Start-Sleep 30"
+    } else {
+        "sleep 30 & sleep 30"
+    };
     let out = Shell
-        .call(
-            json!({"command":"sleep 30 & sleep 30","timeout_secs":1}),
-            &ctx,
-        )
+        .call(json!({ "command": cmd, "timeout_secs": 1 }), &ctx)
         .await
         .unwrap();
     assert!(out.content.contains("TEMPO ESGOTADO"));
@@ -158,9 +166,9 @@ async fn system_info_reports_real_values() {
 }
 
 #[tokio::test]
-async fn bubblewrap_sandbox_confines_writes() {
-    if jarvis_tools::shell::which("bwrap").is_none() {
-        eprintln!("ignorado: bwrap ausente");
+async fn sandbox_confines_writes() {
+    if !jarvis_tools::shell::sandbox_available() {
+        eprintln!("ignorado: sem sandbox nesta plataforma");
         return;
     }
     let dir = tempfile::tempdir().unwrap();
@@ -190,7 +198,9 @@ async fn bubblewrap_sandbox_confines_writes() {
         out.content
     );
     assert!(
-        out.content.contains("Read-only file system") || out.is_error,
+        out.content.contains("Read-only file system")
+            || out.content.contains("Operation not permitted")
+            || out.is_error,
         "{}",
         out.content
     );

@@ -525,9 +525,8 @@ pub fn f32_to_bytes(v: &[f32]) -> Vec<u8> {
 }
 
 pub fn bytes_to_f32(b: &[u8]) -> Vec<f32> {
-    b.chunks_exact(4)
-        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-        .collect()
+    let (chunks, _) = b.as_chunks::<4>();
+    chunks.iter().map(|c| f32::from_le_bytes(*c)).collect()
 }
 
 #[cfg(test)]

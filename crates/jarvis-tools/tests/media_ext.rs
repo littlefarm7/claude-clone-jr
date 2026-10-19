@@ -7,6 +7,14 @@ use jarvis_tools::media::*;
 use jarvis_tools::testutil::context;
 use serde_json::json;
 
+fn python() -> &'static str {
+    if cfg!(windows) {
+        "python"
+    } else {
+        "python3"
+    }
+}
+
 fn have(b: &str) -> bool {
     jarvis_tools::shell::which(b).is_some()
 }
@@ -86,7 +94,7 @@ async fn voice_and_ocr_report_missing_engines_clearly() {
             .unwrap_err();
         assert!(e.to_string().contains("whisper"), "{e}");
     }
-    if !have("espeak-ng") && !have("piper") {
+    if cfg!(target_os = "linux") && !have("espeak-ng") && !have("piper") {
         let e = jarvis_tools::voice::Speak
             .call(json!({"text": "olá", "output": "o.wav"}), &ctx)
             .await
@@ -106,7 +114,7 @@ async fn mcp_stdio_server_tools() {
     let client = Arc::new(
         jarvis_tools::mcp::McpClient::spawn(&McpServerConfig {
             name: "mock".into(),
-            command: "python3".into(),
+            command: python().into(),
             args: vec![script.to_string_lossy().into()],
             env: BTreeMap::new(),
         })
@@ -140,7 +148,13 @@ async fn custom_tools_do_not_use_a_shell() {
     cfg.custom_tools = vec![CustomToolConfig {
         name: "eco".into(),
         description: "eco".into(),
-        command: vec!["echo".into(), "texto={text}".into()],
+        // Print argv[1] verbatim: proves the argument is not interpreted by a shell.
+        command: vec![
+            python().into(),
+            "-c".into(),
+            "import sys; print(sys.argv[1])".into(),
+            "texto={text}".into(),
+        ],
         params: [("text".to_string(), "texto".to_string())]
             .into_iter()
             .collect(),
@@ -199,6 +213,17 @@ async fn espeak_tts_and_tesseract_ocr_when_installed() {
         let wav = std::fs::read(dir.path().join("ola.wav")).unwrap();
         assert_eq!(&wav[..4], b"RIFF");
         assert!(wav.len() > 10_000);
+    } else if cfg!(target_os = "macos") && have("say") {
+        // Native macOS synthesis.
+        let out = jarvis_tools::voice::Speak
+            .call(
+                json!({"text": "Olá, eu sou o Jarvis.", "output": "ola.wav"}),
+                &ctx,
+            )
+            .await
+            .unwrap();
+        assert!(out.content.contains("say"), "{}", out.content);
+        assert!(std::fs::metadata(dir.path().join("ola.wav")).unwrap().len() > 1000);
     }
     if have("tesseract") && have("pdftoppm") {
         // Render a PDF with known text, then OCR it.

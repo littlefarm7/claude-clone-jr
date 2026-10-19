@@ -42,19 +42,18 @@ pub fn find_binary(explicit: Option<&Path>) -> Option<PathBuf> {
     if let Some(p) = explicit {
         return p.exists().then(|| p.to_path_buf());
     }
+    if let Some(p) = crate::platform::which("llama-server") {
+        return Some(p);
+    }
+    let exe = crate::platform::exe_name("llama-server");
     let mut candidates: Vec<PathBuf> = Vec::new();
-    if let Some(path) = std::env::var_os("PATH") {
-        for dir in std::env::split_paths(&path) {
-            candidates.push(dir.join("llama-server"));
-        }
+    if let Some(home) = crate::platform::home_dir() {
+        candidates.push(home.join(".local/share/jarvis/bin").join(&exe));
     }
-    if let Some(home) = std::env::var_os("HOME") {
-        candidates.push(PathBuf::from(&home).join(".local/share/jarvis/bin/llama-server"));
-    }
-    // Next to our own executable (AppImage bundles it there).
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            candidates.push(dir.join("llama-server"));
+    // Next to our own executable (AppImage / zip / .app bundle ship it there).
+    if let Ok(me) = std::env::current_exe() {
+        if let Some(dir) = me.parent() {
+            candidates.push(dir.join(&exe));
         }
     }
     candidates.into_iter().find(|p| p.is_file())

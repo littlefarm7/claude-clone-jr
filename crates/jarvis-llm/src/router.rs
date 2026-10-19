@@ -83,28 +83,15 @@ pub struct Resources {
 }
 
 pub fn detect_resources() -> Resources {
-    let mut r = Resources {
+    let mut sys = sysinfo::System::new();
+    sys.refresh_memory();
+    Resources {
         cpu_threads: std::thread::available_parallelism()
             .map(|n| n.get())
             .unwrap_or(1),
-        ..Default::default()
-    };
-    if let Ok(s) = std::fs::read_to_string("/proc/meminfo") {
-        for line in s.lines() {
-            let kb = |l: &str| {
-                l.split_whitespace()
-                    .nth(1)
-                    .and_then(|v| v.parse::<u64>().ok())
-                    .unwrap_or(0)
-            };
-            if line.starts_with("MemAvailable:") {
-                r.mem_available_mb = kb(line) / 1024;
-            } else if line.starts_with("MemTotal:") {
-                r.mem_total_mb = kb(line) / 1024;
-            }
-        }
+        mem_available_mb: sys.available_memory() / (1024 * 1024),
+        mem_total_mb: sys.total_memory() / (1024 * 1024),
     }
-    r
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -151,12 +138,7 @@ pub fn static_availability(cfg: &ModelConfig, res: &Resources) -> Availability {
 }
 
 pub fn shellexpand(p: &str) -> String {
-    if let Some(rest) = p.strip_prefix("~/") {
-        if let Some(home) = std::env::var_os("HOME") {
-            return format!("{}/{}", home.to_string_lossy(), rest);
-        }
-    }
-    p.to_string()
+    crate::platform::expand_home(p)
 }
 
 /// Pick the best model. Returns the chosen config and a human-readable reason.

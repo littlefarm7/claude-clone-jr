@@ -1,4 +1,4 @@
-//! Terminal, background jobs and Linux diagnostics.
+//! Terminal, background jobs and system diagnostics (Linux, macOS, Windows).
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -194,6 +194,126 @@ const READ_ONLY: &[&str] = &[
     "find",
 ];
 
+/// Windows (cmd / PowerShell) commands, lower-case, matched case-insensitively.
+const WIN_ADMIN: &[&str] = &[
+    "runas",
+    "set-executionpolicy",
+    "reg",
+    "regedit",
+    "sc",
+    "bcdedit",
+    "diskpart",
+    "format",
+    "stop-computer",
+    "restart-computer",
+    "enable-windowsoptionalfeature",
+    "disable-windowsoptionalfeature",
+    "dism",
+    "netsh",
+    "icacls",
+    "takeown",
+    "new-localuser",
+    "remove-localuser",
+    "add-localgroupmember",
+    "set-service",
+    "new-service",
+    "winget",
+    "choco",
+    "msiexec",
+    "wmic",
+];
+const WIN_DESTRUCTIVE: &[&str] = &[
+    "del",
+    "erase",
+    "rd",
+    "remove-item",
+    "ri",
+    "clear-content",
+    "format-volume",
+    "clear-disk",
+    "stop-process",
+    "taskkill",
+    "cipher",
+    "clear-recyclebin",
+];
+const WIN_NETWORK: &[&str] = &[
+    "invoke-webrequest",
+    "iwr",
+    "invoke-restmethod",
+    "irm",
+    "start-bitstransfer",
+    "curl.exe",
+    "bitsadmin",
+];
+const WIN_READ: &[&str] = &[
+    "dir",
+    "get-childitem",
+    "gci",
+    "get-content",
+    "gc",
+    "get-process",
+    "gps",
+    "get-location",
+    "gl",
+    "select-string",
+    "sls",
+    "get-item",
+    "gi",
+    "get-computerinfo",
+    "systeminfo",
+    "tasklist",
+    "where",
+    "where-object",
+    "test-path",
+    "measure-object",
+    "get-date",
+    "write-output",
+    "write-host",
+    "get-command",
+    "get-volume",
+    "get-psdrive",
+    "get-ciminstance",
+    "get-service",
+    "format-table",
+    "format-list",
+    "select-object",
+    "sort-object",
+    "ver",
+    "findstr",
+    "get-filehash",
+    "resolve-path",
+    "split-path",
+    "join-path",
+];
+
+fn windows_word_risk(lname: &str, args: &[String]) -> Option<Risk> {
+    let has = |a: &str| args.iter().any(|x| x.eq_ignore_ascii_case(a));
+    if lname == "start-process" && (has("runas") || has("-verb")) {
+        return Some(Risk::Admin);
+    }
+    if WIN_ADMIN.contains(&lname) {
+        if (lname == "reg" && (has("query") || has("export"))) || (lname == "sc" && has("query")) {
+            return Some(Risk::Read);
+        }
+        return Some(Risk::Admin);
+    }
+    if WIN_DESTRUCTIVE.contains(&lname) {
+        return Some(Risk::Destructive);
+    }
+    if WIN_NETWORK.contains(&lname) {
+        return Some(Risk::Network);
+    }
+    if WIN_READ.contains(&lname) {
+        return Some(Risk::Read);
+    }
+    match lname {
+        "copy" | "copy-item" | "cp" | "move" | "move-item" | "mi" | "mkdir" | "md" | "new-item"
+        | "ni" | "set-content" | "add-content" | "out-file" | "rename-item" | "ren"
+        | "expand-archive" | "compress-archive" => Some(Risk::Write),
+        _ => None,
+    }
+}
+
 fn first_word_risk(tokens: &[String]) -> Risk {
     let mut i = 0;
     while i < tokens.len() && tokens[i].contains('=') && !tokens[i].starts_with('-') {
@@ -207,6 +327,11 @@ fn first_word_risk(tokens: &[String]) -> Risk {
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_default();
     let args = &tokens[i + 1..];
+    let lname = name.to_lowercase();
+    let lname = lname.trim_end_matches(".exe");
+    if let Some(r) = windows_word_risk(lname, args) {
+        return r;
+    }
     let has = |a: &str| args.iter().any(|x| x == a);
     let any_starts = |p: &str| args.iter().any(|x| x.starts_with(p));
     if ADMIN.contains(&name.as_str()) {
@@ -413,8 +538,15 @@ pub fn classify_command(cmd: &str) -> Risk {
         if seg.is_empty() {
             continue;
         }
-        let tokens = shell_words::split(seg)
-            .unwrap_or_else(|_| seg.split_whitespace().map(String::from).collect());
+        let tokens = if cfg!(windows) {
+            // Backslashes are path separators on Windows, not escapes.
+            seg.split_whitespace()
+                .map(|t| t.trim_matches(['"', '\'']).to_string())
+                .collect()
+        } else {
+            shell_words::split(seg)
+                .unwrap_or_else(|_| seg.split_whitespace().map(String::from).collect())
+        };
         let mut r = first_word_risk(&tokens);
         // `xargs rm`, `nohup cmd`, `timeout 5 cmd`, `bash -c`: classify the wrapped command.
         if let Some(first) = tokens.first().map(|s| s.as_str()) {
@@ -454,12 +586,41 @@ pub fn classify_command(cmd: &str) -> Risk {
 // Process execution
 // ---------------------------------------------------------------------------
 
+/// Find a program in PATH or in the usual install folders of this OS.
 pub fn which(name: &str) -> Option<PathBuf> {
-    std::env::var_os("PATH").and_then(|paths| {
-        std::env::split_paths(&paths)
-            .map(|d| d.join(name))
-            .find(|p| p.is_file())
-    })
+    jarvis_llm::platform::find_program(&[name])
+}
+
+/// The shell used by the `shell` tool: bash on Linux/macOS, PowerShell on Windows.
+pub fn shell_invocation(command: &str) -> (String, Vec<String>) {
+    if cfg!(windows) {
+        let ps = which("pwsh").map(|_| "pwsh").unwrap_or("powershell");
+        let script = format!(
+            "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $ErrorActionPreference = 'Continue'; {command}; if ($LASTEXITCODE) {{ exit $LASTEXITCODE }}"
+        );
+        (
+            ps.to_string(),
+            [
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .chain([script])
+            .collect(),
+        )
+    } else {
+        let sh = if which("bash").is_some() {
+            "bash"
+        } else {
+            "sh"
+        };
+        (sh.to_string(), vec!["-c".to_string(), command.to_string()])
+    }
 }
 
 /// Environment for child processes: inherit, minus secrets.
@@ -529,15 +690,96 @@ async fn read_capped<R: AsyncRead + Unpin>(mut r: R, cap: usize) -> String {
     String::from_utf8_lossy(&buf).into_owned()
 }
 
+/// Kill the process and everything it started.
 fn kill_group(pid: Option<u32>) {
-    if let Some(pid) = pid {
-        unsafe {
-            libc::kill(-(pid as i32), libc::SIGKILL);
-        }
+    let Some(pid) = pid else { return };
+    #[cfg(unix)]
+    unsafe {
+        libc::kill(-(pid as i32), libc::SIGKILL);
+    }
+    #[cfg(windows)]
+    {
+        let _ = std::process::Command::new("taskkill")
+            .args(["/T", "/F", "/PID", &pid.to_string()])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
     }
 }
 
-/// Build the command, wrapped in bubblewrap when enabled and installed.
+/// bubblewrap path, only if it can actually create namespaces here
+/// (Ubuntu 24.04+ AppArmor may forbid unprivileged user namespaces).
+#[cfg(target_os = "linux")]
+fn bwrap_usable() -> Option<PathBuf> {
+    static B: OnceLock<Option<PathBuf>> = OnceLock::new();
+    B.get_or_init(|| {
+        let b = which("bwrap")?;
+        let ok = std::process::Command::new(&b)
+            .args([
+                "--ro-bind",
+                "/",
+                "/",
+                "--dev",
+                "/dev",
+                "--proc",
+                "/proc",
+                "true",
+            ])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if !ok {
+            tracing::warn!(
+                "bwrap instalado mas sem permissão para namespaces; terminal sem isolamento"
+            );
+        }
+        ok.then_some(b)
+    })
+    .clone()
+}
+
+/// Whether commands run isolated on this machine (for `doctor` and the UI).
+pub fn sandbox_available() -> bool {
+    #[cfg(target_os = "linux")]
+    return bwrap_usable().is_some();
+    #[cfg(target_os = "macos")]
+    return which("sandbox-exec").is_some();
+    #[allow(unreachable_code)]
+    false
+}
+
+/// Seatbelt profile for macOS: writes only to the workspace and a private temp dir.
+#[cfg(target_os = "macos")]
+fn macos_profile(ctx: &ToolContext, tmp: &Path) -> String {
+    let q = |p: &Path| {
+        format!(
+            "\"{}\"",
+            p.to_string_lossy()
+                .replace('\\', "\\\\")
+                .replace('"', "\\\"")
+        )
+    };
+    let mut allowed: Vec<String> = ctx
+        .guard
+        .workspace
+        .iter()
+        .map(|w| format!("(subpath {})", q(w)))
+        .collect();
+    allowed.push(format!("(subpath {})", q(tmp)));
+    let mut p = format!(
+        "(version 1)\n(allow default)\n(deny file-write*)\n(allow file-write* {} (literal \"/dev/null\") (literal \"/dev/zero\") (literal \"/dev/stdout\") (literal \"/dev/stderr\") (regex #\"^/dev/tty\") (literal \"/dev/dtracehelper\"))\n",
+        allowed.join(" ")
+    );
+    if !ctx.cfg.sandbox.network {
+        p.push_str("(deny network*)\n");
+    }
+    p
+}
+
+/// Build the command, isolated when possible: bubblewrap on Linux,
+/// `sandbox-exec` on macOS. Windows has no sandbox (see SECURITY.md).
 pub fn build_command(
     program: &str,
     args: &[String],
@@ -545,13 +787,19 @@ pub fn build_command(
     ctx: &ToolContext,
     sandbox: bool,
 ) -> Command {
-    let bwrap = if sandbox && ctx.cfg.sandbox.enabled {
-        which("bwrap")
-    } else {
-        None
-    };
-    let mut cmd = match &bwrap {
-        Some(b) => {
+    let program = which(program)
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| program.to_string());
+    let program = program.as_str();
+    #[cfg_attr(windows, allow(unused_variables))]
+    let sandbox = sandbox && ctx.cfg.sandbox.enabled;
+    #[allow(unused_mut)]
+    let mut wrapped: Option<Command> = None;
+    #[allow(unused_mut)]
+    let mut sandbox_tmp: Option<PathBuf> = None;
+    #[cfg(target_os = "linux")]
+    if sandbox {
+        if let Some(b) = bwrap_usable() {
             let mut c = Command::new(b);
             c.args([
                 "--ro-bind",
@@ -579,17 +827,37 @@ pub fn build_command(
                 program,
             ]);
             c.args(args);
-            c
+            wrapped = Some(c);
         }
-        None => {
-            let mut c = Command::new(program);
-            c.args(args);
-            c
+    }
+    #[cfg(target_os = "macos")]
+    if sandbox {
+        if let Some(sb) = which("sandbox-exec") {
+            let tmp = std::env::temp_dir().join(format!("jarvis-sbx-{}", std::process::id()));
+            let _ = std::fs::create_dir_all(&tmp);
+            let tmp = jarvis_llm::platform::canonicalize(&tmp).unwrap_or(tmp);
+            let mut c = Command::new(sb);
+            c.arg("-p")
+                .arg(macos_profile(ctx, &tmp))
+                .arg(program)
+                .args(args);
+            sandbox_tmp = Some(tmp);
+            wrapped = Some(c);
         }
-    };
+    }
+    let mut cmd = wrapped.unwrap_or_else(|| {
+        let mut c = Command::new(program);
+        c.args(args);
+        c
+    });
+    let mut env = scrubbed_env();
+    if let Some(t) = sandbox_tmp {
+        env.retain(|(k, _)| k != "TMPDIR");
+        env.push(("TMPDIR".into(), t.to_string_lossy().into_owned()));
+    }
     cmd.current_dir(cwd)
         .env_clear()
-        .envs(scrubbed_env())
+        .envs(env)
         .env("JARVIS_AGENT", "1")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -597,6 +865,8 @@ pub fn build_command(
         .kill_on_drop(true);
     #[cfg(unix)]
     cmd.process_group(0);
+    #[cfg(windows)]
+    cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     cmd
 }
 
@@ -727,9 +997,11 @@ impl Tool for Shell {
     fn spec(&self) -> ToolSpec {
         ToolSpec {
             name: "shell".into(),
-            description: "Executa um comando bash no workspace (sem sudo). Retorna exit code, stdout e stderr. \
-                Use background=true para processos longos e consulte com job_status."
-                .into(),
+            description: format!(
+                "Executa um comando {} no workspace (sem privilégios de administrador). Retorna exit code, stdout e stderr. \
+                 Use background=true para processos longos e consulte com job_status.",
+                if cfg!(windows) { "PowerShell" } else { "bash" }
+            ),
             parameters: json!({"type":"object","properties":{
                 "command":{"type":"string"},
                 "cwd":{"type":"string","description":"diretório (padrão: workspace)"},
@@ -768,7 +1040,8 @@ impl Tool for Shell {
                 .unwrap_or(ctx.timeout.as_secs())
                 .clamp(1, 3600),
         );
-        let cmd = build_command("bash", &["-c".into(), command.clone()], &cwd, ctx, true);
+        let (prog, sh_args) = shell_invocation(&command);
+        let cmd = build_command(&prog, &sh_args, &cwd, ctx, true);
         if arg_bool(&args, "background").unwrap_or(false) {
             let id = spawn_background(cmd, &command)?;
             return Ok(ToolOutput::ok(format!(
@@ -857,23 +1130,51 @@ impl Tool for JobStatus {
 
 pub struct SystemInfo;
 
-fn read_trim(p: &str) -> String {
-    std::fs::read_to_string(p)
-        .map(|s| s.trim().to_string())
-        .unwrap_or_default()
-}
-
 pub async fn quick(cmd: &str, args: &[&str]) -> Option<String> {
-    let out = tokio::time::timeout(
-        Duration::from_secs(5),
-        Command::new(cmd).args(args).stdin(Stdio::null()).output(),
-    )
-    .await
-    .ok()?
-    .ok()?;
+    let program = which(cmd)?;
+    let mut c = Command::new(program);
+    c.args(args).stdin(Stdio::null());
+    #[cfg(windows)]
+    c.creation_flags(0x0800_0000);
+    let out = tokio::time::timeout(Duration::from_secs(10), c.output())
+        .await
+        .ok()?
+        .ok()?;
     out.status
         .success()
         .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+async fn gpu_names() -> String {
+    let out = if cfg!(target_os = "linux") {
+        quick(
+            "sh",
+            &["-c", "lspci 2>/dev/null | grep -Ei 'vga|3d|display'"],
+        )
+        .await
+    } else if cfg!(target_os = "macos") {
+        quick("system_profiler", &["SPDisplaysDataType"])
+            .await
+            .map(|s| {
+                s.lines()
+                    .filter(|l| l.contains("Chipset Model") || l.contains("VRAM"))
+                    .map(str::trim)
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            })
+    } else {
+        quick(
+            "powershell",
+            &[
+                "-NoProfile",
+                "-Command",
+                "(Get-CimInstance Win32_VideoController).Name",
+            ],
+        )
+        .await
+    };
+    out.filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "(não detectada)".into())
 }
 
 #[async_trait]
@@ -881,37 +1182,39 @@ impl Tool for SystemInfo {
     fn spec(&self) -> ToolSpec {
         ToolSpec {
             name: "system_info".into(),
-            description: "Diagnóstico do Linux: distribuição, kernel, CPU, memória, disco, GPU e programas úteis instalados.".into(),
+            description: "Diagnóstico do sistema: SO, kernel, CPU, memória, discos, GPU e programas úteis instalados.".into(),
             parameters: json!({"type":"object","properties":{}}),
         }
     }
     fn assess(&self, _: &Value, _: &ToolContext) -> RiskAssessment {
         RiskAssessment::new(Risk::Read, "coletar informações do sistema")
     }
-    async fn call(&self, _: Value, ctx: &ToolContext) -> Result<ToolOutput> {
-        let os = read_trim("/etc/os-release")
-            .lines()
-            .find(|l| l.starts_with("PRETTY_NAME="))
-            .map(|l| l[12..].trim_matches('"').to_string())
+    async fn call(&self, _: Value, _ctx: &ToolContext) -> Result<ToolOutput> {
+        use sysinfo::{Disks, System};
+        let mut sys = System::new();
+        sys.refresh_memory();
+        sys.refresh_cpu_all();
+        let cpu = sys
+            .cpus()
+            .first()
+            .map(|c| c.brand().trim().to_string())
             .unwrap_or_default();
-        let kernel = read_trim("/proc/sys/kernel/osrelease");
-        let cpu = read_trim("/proc/cpuinfo")
-            .lines()
-            .find(|l| l.starts_with("model name"))
-            .and_then(|l| l.split(':').nth(1))
-            .map(|s| s.trim().to_string())
-            .unwrap_or_default();
-        let res = jarvis_llm::router::detect_resources();
-        let gpu = quick(
-            "sh",
-            &["-c", "lspci 2>/dev/null | grep -Ei 'vga|3d|display'"],
-        )
-        .await
-        .unwrap_or_else(|| "(lspci indisponível)".into());
-        let disk = quick("df", &["-h", &ctx.guard.cwd().to_string_lossy()])
-            .await
-            .unwrap_or_default();
-        let load = read_trim("/proc/loadavg");
+        let load = System::load_average();
+        let disks = Disks::new_with_refreshed_list();
+        let disk_lines: Vec<String> = disks
+            .list()
+            .iter()
+            .filter(|d| d.total_space() > 1 << 30)
+            .take(8)
+            .map(|d| {
+                format!(
+                    "  {} — {} livres de {}",
+                    d.mount_point().display(),
+                    crate::fs::human_size(d.available_space()),
+                    crate::fs::human_size(d.total_space())
+                )
+            })
+            .collect();
         let progs = [
             "ffmpeg",
             "ffprobe",
@@ -923,19 +1226,23 @@ impl Tool for SystemInfo {
             "tectonic",
             "latexmk",
             "tesseract",
-            "convert",
             "magick",
+            "convert",
             "chromium",
-            "chromium-browser",
             "google-chrome",
+            "chrome",
+            "msedge",
             "firefox",
             "llama-server",
             "whisper-cli",
             "piper",
             "espeak-ng",
+            "say",
             "bwrap",
+            "sandbox-exec",
             "git",
             "python3",
+            "python",
             "docker",
             "podman",
             "vulkaninfo",
@@ -951,10 +1258,18 @@ impl Tool for SystemInfo {
             .filter(|p| which(p).is_none())
             .collect();
         Ok(ToolOutput::ok(format!(
-            "Sistema: {os}\nKernel: {kernel}\nCPU: {cpu} ({} threads)\nMemória: {} MB livres de {} MB\nCarga: {load}\nGPU: {gpu}\nDisco (workspace):\n{disk}\nProgramas encontrados: {}\nNão encontrados: {}",
-            res.cpu_threads,
-            res.mem_available_mb,
-            res.mem_total_mb,
+            "Sistema: {}\nKernel: {}\nArquitetura: {}\nCPU: {cpu} ({} threads)\nMemória: {} MB livres de {} MB\nCarga: {:.2} {:.2} {:.2}\nGPU: {}\nDiscos:\n{}\nProgramas encontrados: {}\nNão encontrados: {}",
+            jarvis_llm::platform::os_pretty_name(),
+            System::kernel_version().unwrap_or_default(),
+            std::env::consts::ARCH,
+            sys.cpus().len(),
+            sys.available_memory() / (1024 * 1024),
+            sys.total_memory() / (1024 * 1024),
+            load.one,
+            load.five,
+            load.fifteen,
+            gpu_names().await,
+            disk_lines.join("\n"),
             found.join(", "),
             missing.join(", ")
         )))
@@ -976,25 +1291,42 @@ impl Tool for ProcessList {
         RiskAssessment::new(Risk::Read, "listar processos")
     }
     async fn call(&self, args: Value, _: &ToolContext) -> Result<ToolOutput> {
-        let key = if arg_str(&args, "sort") == Some("mem") {
-            "-%mem"
-        } else {
-            "-%cpu"
-        };
+        use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
+        let by_mem = arg_str(&args, "sort") == Some("mem");
         let limit = arg_u64(&args, "limit").unwrap_or(25) as usize;
-        let out = quick(
-            "ps",
-            &[
-                "-eo",
-                "pid,user,%cpu,%mem,rss,etime,comm",
-                &format!("--sort={key}"),
-            ],
-        )
-        .await
-        .context("ps falhou")?;
-        Ok(ToolOutput::ok(
-            out.lines().take(limit + 1).collect::<Vec<_>>().join("\n"),
-        ))
+        let rows = tokio::task::spawn_blocking(move || {
+            let mut sys = System::new();
+            let kind = ProcessRefreshKind::nothing().with_cpu().with_memory();
+            sys.refresh_processes_specifics(ProcessesToUpdate::All, true, kind);
+            std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
+            sys.refresh_processes_specifics(ProcessesToUpdate::All, true, kind);
+            let mut procs: Vec<_> = sys.processes().values().collect();
+            if by_mem {
+                procs.sort_by_key(|p| std::cmp::Reverse(p.memory()));
+            } else {
+                procs.sort_by(|a, b| {
+                    b.cpu_usage()
+                        .partial_cmp(&a.cpu_usage())
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
+            }
+            let mut out = vec![format!(
+                "{:>8} {:>6} {:>10}  {}",
+                "PID", "%CPU", "MEM", "NOME"
+            )];
+            for p in procs.into_iter().take(limit) {
+                out.push(format!(
+                    "{:>8} {:>6.1} {:>10}  {}",
+                    p.pid().as_u32(),
+                    p.cpu_usage(),
+                    crate::fs::human_size(p.memory()),
+                    p.name().to_string_lossy()
+                ));
+            }
+            out.join("\n")
+        })
+        .await?;
+        Ok(ToolOutput::ok(rows))
     }
 }
 

@@ -6,7 +6,11 @@ real `jarvis` binary, HTTP client, permission system and tools are exercised
 without network access or model weights. Usage: mock_llm.py PORT
 """
 import json
+import os
 import sys
+
+# Line count command for the platform's shell (bash or PowerShell).
+COUNT = '(Get-Content dados.csv).Count' if os.name == 'nt' else 'wc -l < dados.csv'
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 CALLS = 0
@@ -39,7 +43,7 @@ def decide(messages):
             lambda: call("update_plan", {"steps": [
                 {"title": "contar linhas de dados.csv", "status": "in_progress"},
                 {"title": "escrever relatório", "status": "pending"}]}),
-            lambda: call("shell", {"command": "wc -l < dados.csv"}),
+            lambda: call("shell", {"command": COUNT}),
             lambda: call("write_file", {"path": "saida/relatorio.txt",
                                         "content": "relatorio: dados.csv tem %s linhas\n" % tool_msgs[-1]["content"].split("--- stdout ---\n")[1].strip()}),
             lambda: call("update_plan", {"steps": [
