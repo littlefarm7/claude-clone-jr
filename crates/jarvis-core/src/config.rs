@@ -97,7 +97,10 @@ pub struct PrivacyConfig {
 
 impl Default for PrivacyConfig {
     fn default() -> Self {
-        Self { local_only: false, prefer_local: true }
+        Self {
+            local_only: false,
+            prefer_local: true,
+        }
     }
 }
 
@@ -112,7 +115,10 @@ pub struct SandboxConfig {
 
 impl Default for SandboxConfig {
     fn default() -> Self {
-        Self { enabled: true, network: true }
+        Self {
+            enabled: true,
+            network: true,
+        }
     }
 }
 
@@ -129,7 +135,12 @@ pub struct WebConfig {
 
 impl Default for WebConfig {
     fn default() -> Self {
-        Self { searxng_url: None, allow_private_hosts: false, max_fetch_bytes: 3_000_000, chromium: None }
+        Self {
+            searxng_url: None,
+            allow_private_hosts: false,
+            max_fetch_bytes: 3_000_000,
+            chromium: None,
+        }
     }
 }
 
@@ -147,7 +158,14 @@ pub struct LocalConfig {
 
 impl Default for LocalConfig {
     fn default() -> Self {
-        Self { llama_server: None, port: 9931, gpu_layers: 0, threads: None, ctx_size: 8192, autostart: true }
+        Self {
+            llama_server: None,
+            port: 9931,
+            gpu_layers: 0,
+            threads: None,
+            ctx_size: 8192,
+            autostart: true,
+        }
     }
 }
 
@@ -210,7 +228,10 @@ impl Default for Config {
             sandbox: SandboxConfig::default(),
             web: WebConfig::default(),
             local: LocalConfig::default(),
-            memory: MemoryConfig { embedding_model: None, auto_recall: true },
+            memory: MemoryConfig {
+                embedding_model: None,
+                auto_recall: true,
+            },
             voice: VoiceConfig::default(),
             models: default_models(),
             mcp_servers: vec![],
@@ -237,10 +258,34 @@ pub fn default_models() -> Vec<ModelConfig> {
         temperature: None,
     };
     vec![
-        m("local", ProviderKind::OpenaiCompat, "local", 8192, &["fast", "default", "local"]),
-        m("claude", ProviderKind::Anthropic, "claude-sonnet-5-5", 200_000, &["smart", "code", "long", "vision"]),
-        m("gemini", ProviderKind::Gemini, "gemini-2.5-flash", 1_000_000, &["long", "fast", "vision"]),
-        m("openai", ProviderKind::Openai, "gpt-5-mini", 128_000, &["smart", "code"]),
+        m(
+            "local",
+            ProviderKind::OpenaiCompat,
+            "local",
+            8192,
+            &["fast", "default", "local"],
+        ),
+        m(
+            "claude",
+            ProviderKind::Anthropic,
+            "claude-sonnet-5-5",
+            200_000,
+            &["smart", "code", "long", "vision"],
+        ),
+        m(
+            "gemini",
+            ProviderKind::Gemini,
+            "gemini-2.5-flash",
+            1_000_000,
+            &["long", "fast", "vision"],
+        ),
+        m(
+            "openai",
+            ProviderKind::Openai,
+            "gpt-5-mini",
+            128_000,
+            &["smart", "code"],
+        ),
     ]
 }
 
@@ -252,14 +297,18 @@ pub fn config_dir() -> PathBuf {
     if let Ok(d) = std::env::var("JARVIS_CONFIG_DIR") {
         return PathBuf::from(d);
     }
-    dirs::config_dir().unwrap_or_else(|| PathBuf::from(".")).join("jarvis")
+    dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("jarvis")
 }
 
 pub fn data_dir() -> PathBuf {
     if let Ok(d) = std::env::var("JARVIS_DATA_DIR") {
         return PathBuf::from(d);
     }
-    dirs::data_dir().unwrap_or_else(|| PathBuf::from(".")).join("jarvis")
+    dirs::data_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("jarvis")
 }
 
 impl Config {
@@ -275,8 +324,10 @@ impl Config {
         if !path.exists() {
             return Ok(Self::default());
         }
-        let text = std::fs::read_to_string(path).with_context(|| format!("lendo {}", path.display()))?;
-        let mut cfg: Config = toml::from_str(&text).with_context(|| format!("config inválida em {}", path.display()))?;
+        let text =
+            std::fs::read_to_string(path).with_context(|| format!("lendo {}", path.display()))?;
+        let mut cfg: Config = toml::from_str(&text)
+            .with_context(|| format!("config inválida em {}", path.display()))?;
         cfg.insecure_file = file_is_shared(path);
         cfg.source = Some(path.to_path_buf());
         if cfg.insecure_file {
@@ -303,14 +354,20 @@ impl Config {
     }
 
     pub fn workspace_roots(&self) -> Vec<PathBuf> {
-        self.permissions.workspace_roots.iter().map(|r| expand(r)).collect()
+        self.permissions
+            .workspace_roots
+            .iter()
+            .map(|r| expand(r))
+            .collect()
     }
 }
 
 #[cfg(unix)]
 fn file_is_shared(path: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
-    std::fs::metadata(path).map(|m| m.permissions().mode() & 0o077 != 0).unwrap_or(false)
+    std::fs::metadata(path)
+        .map(|m| m.permissions().mode() & 0o077 != 0)
+        .unwrap_or(false)
 }
 #[cfg(not(unix))]
 fn file_is_shared(_: &Path) -> bool {
@@ -429,7 +486,11 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("c.toml");
-        std::fs::write(&p, "[[models]]\nname='x'\nprovider='anthropic'\nmodel='m'\napi_key='secret'\n").unwrap();
+        std::fs::write(
+            &p,
+            "[[models]]\nname='x'\nprovider='anthropic'\nmodel='m'\napi_key='secret'\n",
+        )
+        .unwrap();
         std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o644)).unwrap();
         let c = Config::load_from(&p).unwrap();
         assert!(c.insecure_file);

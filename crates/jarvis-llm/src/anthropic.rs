@@ -6,7 +6,10 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use crate::{http, split_system, ChatRequest, ChatResponse, Message, ModelConfig, Part, Provider, Role, StopReason, Usage};
+use crate::{
+    http, split_system, ChatRequest, ChatResponse, Message, ModelConfig, Part, Provider, Role,
+    StopReason, Usage,
+};
 
 pub const API_VERSION: &str = "2023-06-01";
 
@@ -18,7 +21,11 @@ pub struct Anthropic {
 
 impl Anthropic {
     pub fn new(cfg: ModelConfig, key: String) -> Self {
-        Self { cfg, key, client: http::client(Duration::from_secs(600)) }
+        Self {
+            cfg,
+            key,
+            client: http::client(Duration::from_secs(600)),
+        }
     }
 }
 
@@ -26,11 +33,25 @@ fn block(p: &Part) -> Option<Value> {
     Some(match p {
         Part::Text { text } if text.is_empty() => return None,
         Part::Text { text } => json!({"type": "text", "text": text}),
-        Part::ToolCall { id, name, arguments, .. } => {
-            let input = if arguments.is_object() { arguments.clone() } else { json!({}) };
+        Part::ToolCall {
+            id,
+            name,
+            arguments,
+            ..
+        } => {
+            let input = if arguments.is_object() {
+                arguments.clone()
+            } else {
+                json!({})
+            };
             json!({"type": "tool_use", "id": id, "name": name, "input": input})
         }
-        Part::ToolResult { call_id, content, is_error, .. } => json!({
+        Part::ToolResult {
+            call_id,
+            content,
+            is_error,
+            ..
+        } => json!({
             "type": "tool_result", "tool_use_id": call_id, "content": content, "is_error": is_error
         }),
         Part::Image { mime, data_b64 } => json!({
@@ -64,11 +85,15 @@ pub fn to_wire(messages: &[Message]) -> (String, Vec<Value>) {
 }
 
 pub fn parse_response(v: &Value) -> Result<ChatResponse> {
-    let content = v["content"].as_array().ok_or_else(|| anyhow!("resposta sem 'content': {v}"))?;
+    let content = v["content"]
+        .as_array()
+        .ok_or_else(|| anyhow!("resposta sem 'content': {v}"))?;
     let mut parts = Vec::new();
     for b in content {
         match b["type"].as_str() {
-            Some("text") => parts.push(Part::Text { text: b["text"].as_str().unwrap_or("").into() }),
+            Some("text") => parts.push(Part::Text {
+                text: b["text"].as_str().unwrap_or("").into(),
+            }),
             Some("tool_use") => parts.push(Part::ToolCall {
                 id: b["id"].as_str().unwrap_or("").into(),
                 name: b["name"].as_str().unwrap_or("").into(),
@@ -88,7 +113,14 @@ pub fn parse_response(v: &Value) -> Result<ChatResponse> {
         input_tokens: v["usage"]["input_tokens"].as_u64().unwrap_or(0),
         output_tokens: v["usage"]["output_tokens"].as_u64().unwrap_or(0),
     };
-    Ok(ChatResponse { message: Message { role: Role::Assistant, parts }, usage, stop })
+    Ok(ChatResponse {
+        message: Message {
+            role: Role::Assistant,
+            parts,
+        },
+        usage,
+        stop,
+    })
 }
 
 #[async_trait]
@@ -123,7 +155,10 @@ impl Provider for Anthropic {
             );
         }
         let url = format!("{}/v1/messages", self.cfg.base_url().trim_end_matches('/'));
-        let headers = [("x-api-key", self.key.clone()), ("anthropic-version", API_VERSION.to_string())];
+        let headers = [
+            ("x-api-key", self.key.clone()),
+            ("anthropic-version", API_VERSION.to_string()),
+        ];
         let v = http::post_json(&self.client, &url, &headers, &body).await?;
         parse_response(&v)
     }
@@ -140,11 +175,21 @@ mod tests {
             Message::user("hi"),
             Message {
                 role: Role::Assistant,
-                parts: vec![Part::ToolCall { id: "t1".into(), name: "x".into(), arguments: json!({}), provider_meta: None }],
+                parts: vec![Part::ToolCall {
+                    id: "t1".into(),
+                    name: "x".into(),
+                    arguments: json!({}),
+                    provider_meta: None,
+                }],
             },
             Message {
                 role: Role::Tool,
-                parts: vec![Part::ToolResult { call_id: "t1".into(), name: "x".into(), content: "ok".into(), is_error: false }],
+                parts: vec![Part::ToolResult {
+                    call_id: "t1".into(),
+                    name: "x".into(),
+                    content: "ok".into(),
+                    is_error: false,
+                }],
             },
             Message::user("next"),
         ];

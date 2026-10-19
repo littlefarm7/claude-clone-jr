@@ -38,7 +38,10 @@ impl HashEmbedder {
     pub fn embed_one(&self, text: &str) -> Vec<f32> {
         let mut v = vec![0f32; self.dim];
         let lower = text.to_lowercase();
-        for word in lower.split(|c: char| !c.is_alphanumeric()).filter(|w| w.chars().count() > 1) {
+        for word in lower
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| w.chars().count() > 1)
+        {
             let h = fnv(word);
             v[(h % self.dim as u64) as usize] += if h & 1 == 0 { 1.0 } else { -1.0 };
             let chars: Vec<char> = format!(" {word} ").chars().collect();
@@ -101,8 +104,14 @@ impl Memory {
     }
 
     pub async fn save(&self, kind: &str, content: &str, tags: &str, source: &str) -> Result<i64> {
-        let emb = self.embedder.embed(&[format!("{content} {tags}")]).await.ok().and_then(|mut v| v.pop());
-        self.store.add_memory(kind, content, tags, source, emb.as_deref())
+        let emb = self
+            .embedder
+            .embed(&[format!("{content} {tags}")])
+            .await
+            .ok()
+            .and_then(|mut v| v.pop());
+        self.store
+            .add_memory(kind, content, tags, source, emb.as_deref())
     }
 
     pub async fn search(&self, query: &str, limit: usize) -> Result<Vec<MemoryHit>> {
@@ -110,8 +119,16 @@ impl Memory {
         if all.is_empty() {
             return Ok(vec![]);
         }
-        let q = self.embedder.embed(&[query.to_string()]).await.ok().and_then(|mut v| v.pop());
-        let fts = self.store.search_memories_fts(query, 50).unwrap_or_default();
+        let q = self
+            .embedder
+            .embed(&[query.to_string()])
+            .await
+            .ok()
+            .and_then(|mut v| v.pop());
+        let fts = self
+            .store
+            .search_memories_fts(query, 50)
+            .unwrap_or_default();
         let mut hits: Vec<MemoryHit> = all
             .into_iter()
             .map(|r| {
@@ -119,8 +136,15 @@ impl Memory {
                     (Some(q), Some(e)) => cosine(q, e).max(0.0),
                     _ => 0.0,
                 };
-                let lex = fts.iter().position(|(m, _)| m.id == r.id).map(|rank| 1.0 / (1.0 + rank as f32)).unwrap_or(0.0);
-                MemoryHit { score: 0.6 * vec_score + 0.4 * lex, record: r }
+                let lex = fts
+                    .iter()
+                    .position(|(m, _)| m.id == r.id)
+                    .map(|rank| 1.0 / (1.0 + rank as f32))
+                    .unwrap_or(0.0);
+                MemoryHit {
+                    score: 0.6 * vec_score + 0.4 * lex,
+                    record: r,
+                }
             })
             .filter(|h| h.score > 0.12)
             .collect();
@@ -138,10 +162,29 @@ mod tests {
     async fn hybrid_search_ranks_relevant_first() {
         let store = Arc::new(Store::in_memory().unwrap());
         let m = Memory::new(store, Arc::new(HashEmbedder::default()));
-        m.save("preference", "Prefiro relatórios em PDF com fonte grande", "documentos", "user").await.unwrap();
-        m.save("fact", "Meu computador tem uma RX 5500 XT", "hardware", "user").await.unwrap();
-        m.save("fact", "A reunião semanal é às terças", "agenda", "user").await.unwrap();
-        let hits = m.search("qual placa de vídeo do computador?", 3).await.unwrap();
+        m.save(
+            "preference",
+            "Prefiro relatórios em PDF com fonte grande",
+            "documentos",
+            "user",
+        )
+        .await
+        .unwrap();
+        m.save(
+            "fact",
+            "Meu computador tem uma RX 5500 XT",
+            "hardware",
+            "user",
+        )
+        .await
+        .unwrap();
+        m.save("fact", "A reunião semanal é às terças", "agenda", "user")
+            .await
+            .unwrap();
+        let hits = m
+            .search("qual placa de vídeo do computador?", 3)
+            .await
+            .unwrap();
         assert!(!hits.is_empty());
         assert!(hits[0].record.content.contains("RX 5500"));
         let hits = m.search("relatório", 3).await.unwrap();

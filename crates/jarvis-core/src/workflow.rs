@@ -63,7 +63,9 @@ impl Workflow {
     }
 
     pub fn load(path: &std::path::Path) -> Result<Self> {
-        Self::from_toml(&std::fs::read_to_string(path).with_context(|| format!("lendo {}", path.display()))?)
+        Self::from_toml(
+            &std::fs::read_to_string(path).with_context(|| format!("lendo {}", path.display()))?,
+        )
     }
 }
 
@@ -76,10 +78,19 @@ pub struct WorkflowOutcome {
 
 /// Execute a workflow step by step. Tool steps go through the agent's
 /// permission system; task steps run as child agent sessions.
-pub async fn run_workflow(agent: &crate::agent::Agent, wf: &Workflow, cancel: tokio_util::sync::CancellationToken) -> Result<WorkflowOutcome> {
+pub async fn run_workflow(
+    agent: &crate::agent::Agent,
+    wf: &Workflow,
+    cancel: tokio_util::sync::CancellationToken,
+) -> Result<WorkflowOutcome> {
     use crate::store::SessionStatus;
     let store = agent.deps().store.clone();
-    let sid = store.create_session(&format!("workflow: {}", wf.name), &wf.description, "workflow", None)?;
+    let sid = store.create_session(
+        &format!("workflow: {}", wf.name),
+        &wf.description,
+        "workflow",
+        None,
+    )?;
     let mut vars = wf.vars.clone();
     for v in vars.values_mut() {
         *v = crate::config::expand(v).to_string_lossy().to_string();
@@ -99,24 +110,52 @@ pub async fn run_workflow(agent: &crate::agent::Agent, wf: &Workflow, cancel: to
         } else {
             let task = render(step.task.as_deref().unwrap_or(""), &vars);
             let out = agent.start_child(&task, &sid, cancel.clone()).await?;
-            let failed = !matches!(out.status, SessionStatus::Completed | SessionStatus::CompletedUnverified);
+            let failed = !matches!(
+                out.status,
+                SessionStatus::Completed | SessionStatus::CompletedUnverified
+            );
             (out.summary, failed)
         };
         let label = step.tool.clone().unwrap_or_else(|| "tarefa".into());
-        log.push(format!("passo {} ({label}): {}", i + 1, if failed { "falhou" } else { "ok" }));
-        store.append_message(&sid, &jarvis_llm::Message::assistant(format!("[passo {} — {label}]\n{output}", i + 1)))?;
+        log.push(format!(
+            "passo {} ({label}): {}",
+            i + 1,
+            if failed { "falhou" } else { "ok" }
+        ));
+        store.append_message(
+            &sid,
+            &jarvis_llm::Message::assistant(format!("[passo {} — {label}]\n{output}", i + 1)),
+        )?;
         if let Some(name) = &step.save_as {
             vars.insert(name.clone(), output.clone());
         }
         if failed && !step.continue_on_error {
             ok = false;
-            log.push(format!("interrompido no passo {}: {}", i + 1, output.chars().take(300).collect::<String>()));
+            log.push(format!(
+                "interrompido no passo {}: {}",
+                i + 1,
+                output.chars().take(300).collect::<String>()
+            ));
             break;
         }
     }
-    let status = if ok { SessionStatus::Completed } else { SessionStatus::Failed };
-    store.update_session(&sid, status, &Default::default(), &Default::default(), Some(&log.join("\n")))?;
-    Ok(WorkflowOutcome { session_id: sid, ok, log })
+    let status = if ok {
+        SessionStatus::Completed
+    } else {
+        SessionStatus::Failed
+    };
+    store.update_session(
+        &sid,
+        status,
+        &Default::default(),
+        &Default::default(),
+        Some(&log.join("\n")),
+    )?;
+    Ok(WorkflowOutcome {
+        session_id: sid,
+        ok,
+        log,
+    })
 }
 
 /// Replace `{{var}}` placeholders.
@@ -138,27 +177,48 @@ pub fn render_args(args: &Option<toml::Value>, vars: &BTreeMap<String, String>) 
             toml::Value::Boolean(b) => Value::Bool(*b),
             toml::Value::Datetime(d) => Value::String(d.to_string()),
             toml::Value::Array(a) => Value::Array(a.iter().map(|x| conv(x, vars)).collect()),
-            toml::Value::Table(t) => Value::Object(t.iter().map(|(k, x)| (k.clone(), conv(x, vars))).collect()),
+            toml::Value::Table(t) => {
+                Value::Object(t.iter().map(|(k, x)| (k.clone(), conv(x, vars))).collect())
+            }
         }
     }
-    args.as_ref().map(|a| conv(a, vars)).unwrap_or_else(|| Value::Object(Default::default()))
+    args.as_ref()
+        .map(|a| conv(a, vars))
+        .unwrap_or_else(|| Value::Object(Default::default()))
 }
 
 /// Parse a cron expression. Accepts the classic 5-field form (min hour dom mon dow)
 /// by prepending a seconds field.
 pub fn parse_cron(expr: &str) -> Result<cron::Schedule> {
     let fields = expr.split_whitespace().count();
-    let full = if fields == 5 { format!("0 {expr}") } else { expr.to_string() };
-    cron::Schedule::from_str(&full).map_err(|e| anyhow::anyhow!("expressão cron inválida '{expr}': {e}"))
+    let full = if fields == 5 {
+        format!("0 {expr}")
+    } else {
+        expr.to_string()
+    };
+    cron::Schedule::from_str(&full)
+        .map_err(|e| anyhow::anyhow!("expressão cron inválida '{expr}': {e}"))
 }
 
 /// Whether a schedule is due: some fire time lies in (last_run, now].
-pub fn is_due(expr: &str, last_run: Option<&str>, created_or_now: chrono::DateTime<chrono::Utc>, now: chrono::DateTime<chrono::Utc>) -> Result<bool> {
+pub fn is_due(
+    expr: &str,
+    last_run: Option<&str>,
+    created_or_now: chrono::DateTime<chrono::Utc>,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<bool> {
     let sched = parse_cron(expr)?;
-    let since = last_run.and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok()).map(|d| d.with_timezone(&chrono::Utc)).unwrap_or(created_or_now);
+    let since = last_run
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+        .map(|d| d.with_timezone(&chrono::Utc))
+        .unwrap_or(created_or_now);
     // Evaluate in local time: users write cron in their wall clock.
     let since_local = since.with_timezone(&chrono::Local);
-    Ok(sched.after(&since_local).next().map(|t| t.with_timezone(&chrono::Utc) <= now).unwrap_or(false))
+    Ok(sched
+        .after(&since_local)
+        .next()
+        .map(|t| t.with_timezone(&chrono::Utc) <= now)
+        .unwrap_or(false))
 }
 
 #[cfg(test)]
@@ -186,7 +246,10 @@ task = "resuma {{files}}"
         assert_eq!(a["path"], "/tmp/x");
         assert_eq!(a["n"], 3);
         vars.insert("files".into(), "a.csv".into());
-        assert_eq!(render(w.steps[1].task.as_ref().unwrap(), &vars), "resuma a.csv");
+        assert_eq!(
+            render(w.steps[1].task.as_ref().unwrap(), &vars),
+            "resuma a.csv"
+        );
         assert!(Workflow::from_toml("name='x'\n[[steps]]\n").is_err());
     }
 

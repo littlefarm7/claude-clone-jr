@@ -10,14 +10,22 @@ use quick_xml::Reader;
 fn zip_entry(path: &Path, name: &str) -> Result<String> {
     let f = std::fs::File::open(path).with_context(|| format!("abrindo {}", path.display()))?;
     let mut z = zip::ZipArchive::new(f).context("arquivo zip/ooxml inválido")?;
-    let mut e = z.by_name(name).with_context(|| format!("{name} não encontrado no arquivo"))?;
+    let mut e = z
+        .by_name(name)
+        .with_context(|| format!("{name} não encontrado no arquivo"))?;
     let mut s = String::new();
     e.read_to_string(&mut s)?;
     Ok(s)
 }
 
 /// Generic XML → text: `text_tags` contribute text, `para_tags` end lines.
-fn xml_text(xml: &str, text_tags: &[&[u8]], para_tags: &[&[u8]], tab_tags: &[&[u8]], cell_tags: &[&[u8]]) -> String {
+fn xml_text(
+    xml: &str,
+    text_tags: &[&[u8]],
+    para_tags: &[&[u8]],
+    tab_tags: &[&[u8]],
+    cell_tags: &[&[u8]],
+) -> String {
     let mut r = Reader::from_str(xml);
     let mut out = String::new();
     let mut in_text = 0usize;
@@ -32,7 +40,11 @@ fn xml_text(xml: &str, text_tags: &[&[u8]], para_tags: &[&[u8]], tab_tags: &[&[u
                 let n = e.name();
                 if tab_tags.contains(&n.as_ref()) {
                     out.push('\t');
-                } else if para_tags.contains(&n.as_ref()) || n.as_ref() == b"w:br" || n.as_ref() == b"a:br" || n.as_ref() == b"text:line-break" {
+                } else if para_tags.contains(&n.as_ref())
+                    || n.as_ref() == b"w:br"
+                    || n.as_ref() == b"a:br"
+                    || n.as_ref() == b"text:line-break"
+                {
                     out.push('\n');
                 }
             }
@@ -48,7 +60,11 @@ fn xml_text(xml: &str, text_tags: &[&[u8]], para_tags: &[&[u8]], tab_tags: &[&[u
             }
             Ok(Event::Text(t)) if in_text > 0 => {
                 let raw = String::from_utf8_lossy(t.as_ref()).into_owned();
-                out.push_str(&quick_xml::escape::unescape(&raw).map(|c| c.into_owned()).unwrap_or(raw));
+                out.push_str(
+                    &quick_xml::escape::unescape(&raw)
+                        .map(|c| c.into_owned())
+                        .unwrap_or(raw),
+                );
             }
             Ok(Event::GeneralRef(g)) if in_text > 0 => {
                 let name = String::from_utf8_lossy(g.as_ref()).into_owned();
@@ -61,7 +77,10 @@ fn xml_text(xml: &str, text_tags: &[&[u8]], para_tags: &[&[u8]], tab_tags: &[&[u
                     _ => "",
                 });
                 if let Some(code) = name.strip_prefix('#') {
-                    let n = code.strip_prefix('x').map(|h| u32::from_str_radix(h, 16).ok()).unwrap_or_else(|| code.parse().ok());
+                    let n = code
+                        .strip_prefix('x')
+                        .map(|h| u32::from_str_radix(h, 16).ok())
+                        .unwrap_or_else(|| code.parse().ok());
                     if let Some(c) = n.and_then(char::from_u32) {
                         out.push(c);
                     }
@@ -76,12 +95,24 @@ fn xml_text(xml: &str, text_tags: &[&[u8]], para_tags: &[&[u8]], tab_tags: &[&[u
 
 pub fn docx_text(path: &Path) -> Result<String> {
     let xml = zip_entry(path, "word/document.xml")?;
-    Ok(xml_text(&xml, &[b"w:t"], &[b"w:p"], &[b"w:tab"], &[b"w:tc"]))
+    Ok(xml_text(
+        &xml,
+        &[b"w:t"],
+        &[b"w:p"],
+        &[b"w:tab"],
+        &[b"w:tc"],
+    ))
 }
 
 pub fn odt_text(path: &Path) -> Result<String> {
     let xml = zip_entry(path, "content.xml")?;
-    Ok(xml_text(&xml, &[b"text:p", b"text:h", b"text:span"], &[b"text:p", b"text:h"], &[b"text:tab"], &[b"table:table-cell"]))
+    Ok(xml_text(
+        &xml,
+        &[b"text:p", b"text:h", b"text:span"],
+        &[b"text:p", b"text:h"],
+        &[b"text:tab"],
+        &[b"table:table-cell"],
+    ))
 }
 
 pub fn pptx_text(path: &Path) -> Result<String> {
@@ -90,7 +121,11 @@ pub fn pptx_text(path: &Path) -> Result<String> {
     let mut slides: Vec<(u32, String)> = Vec::new();
     for i in 0..z.len() {
         let name = z.by_index(i)?.name()?.to_string();
-        if let Some(n) = name.strip_prefix("ppt/slides/slide").and_then(|r| r.strip_suffix(".xml")).and_then(|n| n.parse().ok()) {
+        if let Some(n) = name
+            .strip_prefix("ppt/slides/slide")
+            .and_then(|r| r.strip_suffix(".xml"))
+            .and_then(|n| n.parse().ok())
+        {
             slides.push((n, name));
         }
     }
@@ -107,7 +142,10 @@ pub fn pptx_text(path: &Path) -> Result<String> {
 }
 
 fn esc(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 /// Runs with **bold** support.
@@ -117,8 +155,15 @@ fn runs(text: &str) -> String {
         if part.is_empty() {
             continue;
         }
-        let bold = if i % 2 == 1 { "<w:rPr><w:b/></w:rPr>" } else { "" };
-        out.push_str(&format!("<w:r>{bold}<w:t xml:space=\"preserve\">{}</w:t></w:r>", esc(part)));
+        let bold = if i % 2 == 1 {
+            "<w:rPr><w:b/></w:rPr>"
+        } else {
+            ""
+        };
+        out.push_str(&format!(
+            "<w:r>{bold}<w:t xml:space=\"preserve\">{}</w:t></w:r>",
+            esc(part)
+        ));
     }
     out
 }
@@ -127,7 +172,9 @@ fn runs(text: &str) -> String {
 pub fn write_docx(path: &Path, title: Option<&str>, markdown: &str) -> Result<()> {
     let mut body = String::new();
     let para = |style: Option<&str>, text: &str| {
-        let ppr = style.map(|s| format!("<w:pPr><w:pStyle w:val=\"{s}\"/></w:pPr>")).unwrap_or_default();
+        let ppr = style
+            .map(|s| format!("<w:pPr><w:pStyle w:val=\"{s}\"/></w:pPr>"))
+            .unwrap_or_default();
         format!("<w:p>{ppr}{}</w:p>", runs(text))
     };
     if let Some(t) = title {
@@ -153,7 +200,11 @@ pub fn write_docx(path: &Path, title: Option<&str>, markdown: &str) -> Result<()
             para(Some("Heading2"), t)
         } else if let Some(t) = l.strip_prefix("# ") {
             para(Some("Heading1"), t)
-        } else if let Some(t) = l.trim_start().strip_prefix("- ").or_else(|| l.trim_start().strip_prefix("* ")) {
+        } else if let Some(t) = l
+            .trim_start()
+            .strip_prefix("- ")
+            .or_else(|| l.trim_start().strip_prefix("* "))
+        {
             para(Some("ListBullet"), &format!("• {t}"))
         } else {
             para(None, l)
@@ -207,7 +258,8 @@ pub fn write_docx(path: &Path, title: Option<&str>, markdown: &str) -> Result<()
     ];
     let f = std::fs::File::create(path)?;
     let mut z = zip::ZipWriter::new(f);
-    let opts = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    let opts = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
     for (name, content) in files.iter() {
         z.start_file(*name, opts)?;
         z.write_all(content.as_bytes())?;
@@ -226,7 +278,12 @@ mod tests {
     fn docx_roundtrip() {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("t.docx");
-        write_docx(&p, Some("Relatório"), "# Introdução\nTexto **forte** & <especial>.\n- item um\n").unwrap();
+        write_docx(
+            &p,
+            Some("Relatório"),
+            "# Introdução\nTexto **forte** & <especial>.\n- item um\n",
+        )
+        .unwrap();
         let t = docx_text(&p).unwrap();
         assert!(t.contains("Relatório"));
         assert!(t.contains("Texto forte & <especial>."), "{t}");

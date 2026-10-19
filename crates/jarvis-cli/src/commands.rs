@@ -37,7 +37,11 @@ fn approver(cli: &Cli, allow: Option<&str>) -> Arc<dyn Approver> {
     if cli.yes {
         Arc::new(AutoApprove)
     } else if cli.non_interactive || !std::io::stdin().is_terminal() {
-        Arc::new(NonInteractive { preapproved: allow.map(|a| a.split(',').map(|s| s.trim().to_string()).collect()).unwrap_or_default() })
+        Arc::new(NonInteractive {
+            preapproved: allow
+                .map(|a| a.split(',').map(|s| s.trim().to_string()).collect())
+                .unwrap_or_default(),
+        })
     } else {
         Arc::new(crate::term::TerminalApprover::new())
     }
@@ -71,7 +75,10 @@ fn exit_code(out: &RunOutcome) -> i32 {
 
 fn print_outcome(cli: &Cli, out: &RunOutcome) {
     if cli.json {
-        println!("{}", serde_json::json!({"session_id": out.session_id, "status": out.status, "summary": out.summary}));
+        println!(
+            "{}",
+            serde_json::json!({"session_id": out.session_id, "status": out.status, "summary": out.summary})
+        );
         return;
     }
     let label = match out.status {
@@ -81,7 +88,11 @@ fn print_outcome(cli: &Cli, out: &RunOutcome) {
         SessionStatus::Cancelled => yellow("cancelado"),
         _ => red("falhou"),
     };
-    println!("\n{} {label}  {}", bold("Resultado:"), dim(&format!("sessão {}", out.session_id)));
+    println!(
+        "\n{} {label}  {}",
+        bold("Resultado:"),
+        dim(&format!("sessão {}", out.session_id))
+    );
     if !out.summary.trim().is_empty() {
         println!("{}", out.summary.trim());
     }
@@ -94,8 +105,13 @@ pub async fn run_task(cli: Arc<Cli>, task: String, allow: Option<String>) -> Res
     let rt = runtime(&cli).await?;
     let approver = approver(&cli, allow.as_deref());
     let sink: Arc<dyn EventSink> = Arc::new(Printer { json: cli.json });
-    let sel = rt.select_model(cli.model.as_deref(), &task, approver.as_ref()).await?;
-    sink.emit(AgentEvent::ModelSelected { model: sel.provider.id(), reason: sel.reason.clone() });
+    let sel = rt
+        .select_model(cli.model.as_deref(), &task, approver.as_ref())
+        .await?;
+    sink.emit(AgentEvent::ModelSelected {
+        model: sel.provider.id(),
+        reason: sel.reason.clone(),
+    });
     let agent = rt.agent(&sel, approver, sink);
     let out = agent.start(&task, ctrlc_token()).await;
     rt.shutdown().await;
@@ -106,10 +122,15 @@ pub async fn run_task(cli: Arc<Cli>, task: String, allow: Option<String>) -> Res
 
 pub async fn resume(cli: Arc<Cli>, id: &str) -> Result<i32> {
     let rt = runtime(&cli).await?;
-    let rec = rt.store.get_session(id)?.context("sessão não encontrada (ou prefixo ambíguo)")?;
+    let rec = rt
+        .store
+        .get_session(id)?
+        .context("sessão não encontrada (ou prefixo ambíguo)")?;
     let approver = approver(&cli, None);
     let sink: Arc<dyn EventSink> = Arc::new(Printer { json: cli.json });
-    let sel = rt.select_model(cli.model.as_deref(), &rec.task, approver.as_ref()).await?;
+    let sel = rt
+        .select_model(cli.model.as_deref(), &rec.task, approver.as_ref())
+        .await?;
     let agent = rt.agent(&sel, approver, sink);
     let out = agent.resume(&rec.id, ctrlc_token()).await;
     rt.shutdown().await;
@@ -124,12 +145,25 @@ pub async fn chat(cli: Arc<Cli>, session: Option<String>) -> Result<i32> {
     let sink: Arc<dyn EventSink> = Arc::new(Printer { json: cli.json });
     let mut model_name = cli.model.clone();
     let mut session_id = match &session {
-        Some(s) => Some(rt.store.get_session(s)?.context("sessão não encontrada")?.id),
+        Some(s) => Some(
+            rt.store
+                .get_session(s)?
+                .context("sessão não encontrada")?
+                .id,
+        ),
         None => None,
     };
-    println!("{}", bold("Jarvis Core — chat. Comandos: /sair, /nova, /modelo <nome>, /plano, /sessoes"));
-    let mut sel = rt.select_model(model_name.as_deref(), "", approver.as_ref()).await?;
-    println!("{}", dim(&format!("modelo: {} ({})", sel.provider.id(), sel.reason)));
+    println!(
+        "{}",
+        bold("Jarvis Core — chat. Comandos: /sair, /nova, /modelo <nome>, /plano, /sessoes")
+    );
+    let mut sel = rt
+        .select_model(model_name.as_deref(), "", approver.as_ref())
+        .await?;
+    println!(
+        "{}",
+        dim(&format!("modelo: {} ({})", sel.provider.id(), sel.reason))
+    );
     loop {
         print!("\n{} ", cyan("você ›"));
         let _ = std::io::stdout().flush();
@@ -156,9 +190,15 @@ pub async fn chat(cli: Arc<Cli>, session: Option<String>) -> Result<i32> {
             }
             "/modelo" | "/model" => {
                 model_name = line.split_whitespace().nth(1).map(String::from);
-                match rt.select_model(model_name.as_deref(), "", approver.as_ref()).await {
+                match rt
+                    .select_model(model_name.as_deref(), "", approver.as_ref())
+                    .await
+                {
                     Ok(s) => {
-                        println!("{}", dim(&format!("modelo: {} ({})", s.provider.id(), s.reason)));
+                        println!(
+                            "{}",
+                            dim(&format!("modelo: {} ({})", s.provider.id(), s.reason))
+                        );
                         sel = s;
                     }
                     Err(e) => println!("{} {e:#}", red("erro:")),
@@ -168,7 +208,14 @@ pub async fn chat(cli: Arc<Cli>, session: Option<String>) -> Result<i32> {
             "/plano" | "/plan" => {
                 if let Some(id) = &session_id {
                     if let Some(r) = rt.store.get_session(id)? {
-                        println!("{}", if r.plan.steps.is_empty() { "(sem plano)".into() } else { r.plan.render() });
+                        println!(
+                            "{}",
+                            if r.plan.steps.is_empty() {
+                                "(sem plano)".into()
+                            } else {
+                                r.plan.render()
+                            }
+                        );
                     }
                 }
                 continue;
@@ -188,7 +235,9 @@ pub async fn chat(cli: Arc<Cli>, session: Option<String>) -> Result<i32> {
         match out {
             Ok(out) => {
                 session_id = Some(out.session_id.clone());
-                if out.status != SessionStatus::Completed && out.status != SessionStatus::CompletedUnverified {
+                if out.status != SessionStatus::Completed
+                    && out.status != SessionStatus::CompletedUnverified
+                {
                     print_outcome(&cli, &out);
                 }
             }
@@ -211,8 +260,19 @@ pub async fn sessions(cli: &Cli, limit: usize) -> Result<i32> {
     }
     for s in list {
         let (d, t) = s.plan.progress();
-        let plan = if t > 0 { format!(" plano {d}/{t}") } else { String::new() };
-        println!("{}  {:<22} {}{}  {}", &s.id[..8], s.status.as_str(), &s.updated_at[..16.min(s.updated_at.len())], plan, s.title);
+        let plan = if t > 0 {
+            format!(" plano {d}/{t}")
+        } else {
+            String::new()
+        };
+        println!(
+            "{}  {:<22} {}{}  {}",
+            &s.id[..8],
+            s.status.as_str(),
+            &s.updated_at[..16.min(s.updated_at.len())],
+            plan,
+            s.title
+        );
     }
     Ok(0)
 }
@@ -220,7 +280,14 @@ pub async fn sessions(cli: &Cli, limit: usize) -> Result<i32> {
 pub async fn show(cli: &Cli, id: &str) -> Result<i32> {
     let rt = runtime(cli).await?;
     let rec = rt.store.get_session(id)?.context("sessão não encontrada")?;
-    println!("{} {}\nstatus: {}\nmodelo: {}\ntarefa: {}\n", bold("Sessão"), rec.id, rec.status.as_str(), rec.model, rec.task);
+    println!(
+        "{} {}\nstatus: {}\nmodelo: {}\ntarefa: {}\n",
+        bold("Sessão"),
+        rec.id,
+        rec.status.as_str(),
+        rec.model,
+        rec.task
+    );
     if !rec.plan.steps.is_empty() {
         println!("{}\n{}\n", bold("Plano:"), rec.plan.render());
     }
@@ -234,14 +301,37 @@ pub async fn show(cli: &Cli, id: &str) -> Result<i32> {
                     println!("{} {t}", green("jarvis:"));
                 }
                 for c in m.tool_calls() {
-                    println!("  {} {} {}", cyan("→"), c.name, dim(&c.arguments.to_string().chars().take(200).collect::<String>()));
+                    println!(
+                        "  {} {} {}",
+                        cyan("→"),
+                        c.name,
+                        dim(&c
+                            .arguments
+                            .to_string()
+                            .chars()
+                            .take(200)
+                            .collect::<String>())
+                    );
                 }
             }
             Role::Tool => {
                 for p in &m.parts {
-                    if let Part::ToolResult { content, is_error, .. } = p {
-                        let first: String = content.lines().next().unwrap_or("").chars().take(160).collect();
-                        println!("    {} {}", if *is_error { red("✗") } else { green("✓") }, dim(&first));
+                    if let Part::ToolResult {
+                        content, is_error, ..
+                    } = p
+                    {
+                        let first: String = content
+                            .lines()
+                            .next()
+                            .unwrap_or("")
+                            .chars()
+                            .take(160)
+                            .collect();
+                        println!(
+                            "    {} {}",
+                            if *is_error { red("✗") } else { green("✓") },
+                            dim(&first)
+                        );
                     }
                 }
             }
@@ -270,11 +360,24 @@ pub async fn memory(cli: &Cli, cmd: &MemoryCmd) -> Result<i32> {
                 println!("Nenhuma memória.");
             }
             for m in list {
-                println!("#{:<4} {:<10} {}  {}", m.id, m.kind, m.content, dim(&format!("[{}] {}", m.tags, m.source)));
+                println!(
+                    "#{:<4} {:<10} {}  {}",
+                    m.id,
+                    m.kind,
+                    m.content,
+                    dim(&format!("[{}] {}", m.tags, m.source))
+                );
             }
         }
-        MemoryCmd::Add { content, kind, tags } => {
-            let id = rt.memory.save(kind, &content.join(" "), tags, "user").await?;
+        MemoryCmd::Add {
+            content,
+            kind,
+            tags,
+        } => {
+            let id = rt
+                .memory
+                .save(kind, &content.join(" "), tags, "user")
+                .await?;
             println!("memória #{id} salva");
         }
         MemoryCmd::Search { query } => {
@@ -303,7 +406,13 @@ pub async fn models(cli: &Cli) -> Result<i32> {
     let rt = runtime(cli).await?;
     let avail = rt.availability().await;
     let res = jarvis_llm::router::detect_resources();
-    println!("{}", dim(&format!("RAM livre: {} MB de {} MB, {} threads", res.mem_available_mb, res.mem_total_mb, res.cpu_threads)));
+    println!(
+        "{}",
+        dim(&format!(
+            "RAM livre: {} MB de {} MB, {} threads",
+            res.mem_available_mb, res.mem_total_mb, res.cpu_threads
+        ))
+    );
     for m in &rt.cfg.models {
         let a = match avail.get(&m.name) {
             Some(Availability::Ready) => green("pronto"),
@@ -311,13 +420,21 @@ pub async fn models(cli: &Cli) -> Result<i32> {
             Some(Availability::Unavailable(why)) => red(&format!("indisponível: {why}")),
             None => "?".into(),
         };
-        let default = if rt.cfg.default_model.as_deref() == Some(&m.name) { "*" } else { " " };
+        let default = if rt.cfg.default_model.as_deref() == Some(&m.name) {
+            "*"
+        } else {
+            " "
+        };
         println!(
             "{default}{:<10} {:<14} {:<28} {} {}",
             m.name,
             format!("{:?}", m.provider).to_lowercase(),
             m.model,
-            if m.is_local() { cyan("local ") } else { yellow("remoto") },
+            if m.is_local() {
+                cyan("local ")
+            } else {
+                yellow("remoto")
+            },
             a
         );
     }
@@ -326,9 +443,16 @@ pub async fn models(cli: &Cli) -> Result<i32> {
 
 pub async fn serve(cli: &Cli, gguf: &Path, port: u16, gpu_layers: u32, ctx: u32) -> Result<i32> {
     let cfg = load_config(cli)?;
-    println!("Iniciando llama-server em 127.0.0.1:{port} com {}", gguf.display());
+    println!(
+        "Iniciando llama-server em 127.0.0.1:{port} com {}",
+        gguf.display()
+    );
     let server = jarvis_llm::local::LlamaServer::start(&jarvis_llm::local::LlamaServerOptions {
-        binary: cfg.local.llama_server.as_deref().map(jarvis_core::config::expand),
+        binary: cfg
+            .local
+            .llama_server
+            .as_deref()
+            .map(jarvis_core::config::expand),
         gguf: gguf.to_path_buf(),
         port,
         ctx_size: ctx,
@@ -337,7 +461,11 @@ pub async fn serve(cli: &Cli, gguf: &Path, port: u16, gpu_layers: u32, ctx: u32)
         extra_args: vec![],
     })
     .await?;
-    println!("{} {} — Ctrl+C para parar", green("pronto:"), server.base_url);
+    println!(
+        "{} {} — Ctrl+C para parar",
+        green("pronto:"),
+        server.base_url
+    );
     tokio::signal::ctrl_c().await?;
     server.stop().await;
     Ok(0)
@@ -346,7 +474,11 @@ pub async fn serve(cli: &Cli, gguf: &Path, port: u16, gpu_layers: u32, ctx: u32)
 pub async fn tools(cli: &Cli) -> Result<i32> {
     let rt = runtime(cli).await?;
     for s in rt.tools.specs() {
-        println!("{:<26} {}", bold(&s.name), s.description.lines().next().unwrap_or(""));
+        println!(
+            "{:<26} {}",
+            bold(&s.name),
+            s.description.lines().next().unwrap_or("")
+        );
     }
     Ok(0)
 }
@@ -355,7 +487,11 @@ pub async fn audit(cmd: &AuditCmd) -> Result<i32> {
     let path = data_dir().join("audit.jsonl");
     match cmd {
         AuditCmd::Verify => match Audit::verify(&path) {
-            Ok(n) => println!("{} {n} entradas íntegras ({})", green("ok:"), path.display()),
+            Ok(n) => println!(
+                "{} {n} entradas íntegras ({})",
+                green("ok:"),
+                path.display()
+            ),
             Err(e) => {
                 println!("{} {e}", red("auditoria comprometida:"));
                 return Ok(1);
@@ -378,7 +514,10 @@ pub async fn config(cli: &Cli, cmd: &ConfigCmd) -> Result<i32> {
             let p = Config::save_default_if_missing()?;
             println!("configuração em {}", p.display());
         }
-        ConfigCmd::Path => println!("{}", cli.config.clone().unwrap_or_else(Config::path).display()),
+        ConfigCmd::Path => println!(
+            "{}",
+            cli.config.clone().unwrap_or_else(Config::path).display()
+        ),
         ConfigCmd::Show => {
             let c = load_config(cli)?;
             println!("{}", toml_string(&c)?);
@@ -399,13 +538,33 @@ pub async fn consent(cli: &Cli, cmd: &ConsentCmd) -> Result<i32> {
             for m in &rt.cfg.models {
                 if !m.is_local() {
                     let k = jarvis_core::consent::consent_key(m);
-                    println!("{:<10} {:<50} {}", m.name, k, if rt.store.has_consent(&k)? { green("autorizado") } else { dim("não autorizado") });
+                    println!(
+                        "{:<10} {:<50} {}",
+                        m.name,
+                        k,
+                        if rt.store.has_consent(&k)? {
+                            green("autorizado")
+                        } else {
+                            dim("não autorizado")
+                        }
+                    );
                 }
             }
         }
         ConsentCmd::Revoke { key } => {
-            let key = rt.cfg.model(key).map(jarvis_core::consent::consent_key).unwrap_or(key.clone());
-            println!("{}", if rt.store.revoke_consent(&key)? { "revogado" } else { "não havia consentimento" });
+            let key = rt
+                .cfg
+                .model(key)
+                .map(jarvis_core::consent::consent_key)
+                .unwrap_or(key.clone());
+            println!(
+                "{}",
+                if rt.store.revoke_consent(&key)? {
+                    "revogado"
+                } else {
+                    "não havia consentimento"
+                }
+            );
         }
     }
     Ok(0)
@@ -421,31 +580,96 @@ pub async fn doctor(cli: &Cli) -> Result<i32> {
         }
     };
     println!("{}", bold("Jarvis doctor"));
-    println!("config: {} {}", Config::path().display(), if Config::path().exists() { "" } else { "(padrões; crie com `jarvis config init`)" });
+    println!(
+        "config: {} {}",
+        Config::path().display(),
+        if Config::path().exists() {
+            ""
+        } else {
+            "(padrões; crie com `jarvis config init`)"
+        }
+    );
     if cfg.insecure_file {
-        println!("{} config legível por outros usuários: chmod 600 {}", red("✗"), Config::path().display());
+        println!(
+            "{} config legível por outros usuários: chmod 600 {}",
+            red("✗"),
+            Config::path().display()
+        );
     }
     println!("dados: {}", data_dir().display());
     let res = jarvis_llm::router::detect_resources();
-    println!("RAM livre: {} MB / {} MB — threads: {}", res.mem_available_mb, res.mem_total_mb, res.cpu_threads);
+    println!(
+        "RAM livre: {} MB / {} MB — threads: {}",
+        res.mem_available_mb, res.mem_total_mb, res.cpu_threads
+    );
     let w = |n: &str| jarvis_tools::shell::which(n).is_some();
-    let llama = jarvis_llm::local::find_binary(cfg.local.llama_server.as_deref().map(jarvis_core::config::expand).as_deref()).is_some();
-    check(llama, "llama-server (modelos locais)", "→ compile o llama.cpp (veja README) ou defina local.llama_server");
-    check(w("bwrap"), "bubblewrap (isolamento do terminal)", "→ sudo apt install bubblewrap");
-    check(w("pdftotext"), "poppler-utils (leitura de PDF)", "→ sudo apt install poppler-utils");
-    check(w("pandoc"), "pandoc (DOCX/PPTX ricos)", "→ sudo apt install pandoc");
-    check(w("soffice"), "LibreOffice (conversões)", "→ sudo apt install libreoffice");
-    check(w("pdflatex") || w("xelatex") || w("tectonic"), "LaTeX", "→ sudo apt install texlive-latex-recommended (ou tectonic)");
-    check(w("ffmpeg") && w("ffprobe"), "ffmpeg/ffprobe (áudio e vídeo)", "→ sudo apt install ffmpeg");
-    check(w("whisper-cli") || w("whisper-cpp"), "whisper.cpp (transcrição)", "→ compile whisper.cpp; veja docs/VOICE.md");
-    check(w("piper") || w("espeak-ng"), "piper/espeak-ng (síntese de voz)", "→ sudo apt install espeak-ng");
+    let llama = jarvis_llm::local::find_binary(
+        cfg.local
+            .llama_server
+            .as_deref()
+            .map(jarvis_core::config::expand)
+            .as_deref(),
+    )
+    .is_some();
     check(
-        ["chromium", "chromium-browser", "google-chrome"].iter().any(|b| w(b)) || cfg.web.chromium.is_some(),
+        llama,
+        "llama-server (modelos locais)",
+        "→ compile o llama.cpp (veja README) ou defina local.llama_server",
+    );
+    check(
+        w("bwrap"),
+        "bubblewrap (isolamento do terminal)",
+        "→ sudo apt install bubblewrap",
+    );
+    check(
+        w("pdftotext"),
+        "poppler-utils (leitura de PDF)",
+        "→ sudo apt install poppler-utils",
+    );
+    check(
+        w("pandoc"),
+        "pandoc (DOCX/PPTX ricos)",
+        "→ sudo apt install pandoc",
+    );
+    check(
+        w("soffice"),
+        "LibreOffice (conversões)",
+        "→ sudo apt install libreoffice",
+    );
+    check(
+        w("pdflatex") || w("xelatex") || w("tectonic"),
+        "LaTeX",
+        "→ sudo apt install texlive-latex-recommended (ou tectonic)",
+    );
+    check(
+        w("ffmpeg") && w("ffprobe"),
+        "ffmpeg/ffprobe (áudio e vídeo)",
+        "→ sudo apt install ffmpeg",
+    );
+    check(
+        w("whisper-cli") || w("whisper-cpp"),
+        "whisper.cpp (transcrição)",
+        "→ compile whisper.cpp; veja docs/VOICE.md",
+    );
+    check(
+        w("piper") || w("espeak-ng"),
+        "piper/espeak-ng (síntese de voz)",
+        "→ sudo apt install espeak-ng",
+    );
+    check(
+        ["chromium", "chromium-browser", "google-chrome"]
+            .iter()
+            .any(|b| w(b))
+            || cfg.web.chromium.is_some(),
         "Chromium (navegador headless)",
         "→ sudo apt install chromium",
     );
     for key in ["ANTHROPIC_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY"] {
-        check(std::env::var(key).map(|v| !v.is_empty()).unwrap_or(false), &format!("{key} definido"), "(opcional)");
+        check(
+            std::env::var(key).map(|v| !v.is_empty()).unwrap_or(false),
+            &format!("{key} definido"),
+            "(opcional)",
+        );
     }
     Ok(0)
 }
@@ -454,19 +678,36 @@ pub async fn doctor(cli: &Cli) -> Result<i32> {
 pub fn detach() -> Result<i32> {
     let logs = data_dir().join("logs");
     std::fs::create_dir_all(&logs)?;
-    let log = logs.join(format!("run-{}.log", chrono::Local::now().format("%Y%m%d-%H%M%S")));
+    let log = logs.join(format!(
+        "run-{}.log",
+        chrono::Local::now().format("%Y%m%d-%H%M%S")
+    ));
     let f = std::fs::File::create(&log)?;
-    let args: Vec<String> = std::env::args().skip(1).filter(|a| a != "--detach").collect();
+    let args: Vec<String> = std::env::args()
+        .skip(1)
+        .filter(|a| a != "--detach")
+        .collect();
     let mut cmd = std::process::Command::new(std::env::current_exe()?);
-    cmd.args(&args).arg("--non-interactive").stdin(std::process::Stdio::null()).stdout(f.try_clone()?).stderr(f);
+    cmd.args(&args)
+        .arg("--non-interactive")
+        .stdin(std::process::Stdio::null())
+        .stdout(f.try_clone()?)
+        .stderr(f);
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
         cmd.process_group(0);
     }
     let child = cmd.spawn()?;
-    println!("Em segundo plano: pid {} — log {}", child.id(), log.display());
-    println!("Acompanhe com `jarvis sessions` e `tail -f {}`.", log.display());
+    println!(
+        "Em segundo plano: pid {} — log {}",
+        child.id(),
+        log.display()
+    );
+    println!(
+        "Acompanhe com `jarvis sessions` e `tail -f {}`.",
+        log.display()
+    );
     Ok(0)
 }
 
@@ -479,8 +720,15 @@ pub async fn workflow(cli: Arc<Cli>, file: &Path, extra: &[String]) -> Result<i3
     let rt = runtime(&cli).await?;
     let approver = approver(&cli, Some(&wf.allowed_tools.join(",")));
     let sink: Arc<dyn EventSink> = Arc::new(Printer { json: cli.json });
-    let task_text: String = wf.steps.iter().filter_map(|s| s.task.clone()).collect::<Vec<_>>().join("\n");
-    let sel = rt.select_model(cli.model.as_deref(), &task_text, approver.as_ref()).await?;
+    let task_text: String = wf
+        .steps
+        .iter()
+        .filter_map(|s| s.task.clone())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let sel = rt
+        .select_model(cli.model.as_deref(), &task_text, approver.as_ref())
+        .await?;
     let agent = rt.agent(&sel, approver, sink);
     println!("{} {}", bold("Workflow:"), wf.name);
     let out = jarvis_core::workflow::run_workflow(&agent, &wf, ctrlc_token()).await;
@@ -489,35 +737,70 @@ pub async fn workflow(cli: Arc<Cli>, file: &Path, extra: &[String]) -> Result<i3
     for l in &out.log {
         println!("  {l}");
     }
-    println!("{} sessão {}", if out.ok { green("concluído") } else { red("falhou") }, out.session_id);
+    println!(
+        "{} sessão {}",
+        if out.ok {
+            green("concluído")
+        } else {
+            red("falhou")
+        },
+        out.session_id
+    );
     Ok(if out.ok { 0 } else { 1 })
 }
 
 pub async fn schedule(cli: &Cli, cmd: &ScheduleCmd) -> Result<i32> {
     let rt = runtime(cli).await?;
     match cmd {
-        ScheduleCmd::Add { name, cron, task, workflow, allow, now } => {
+        ScheduleCmd::Add {
+            name,
+            cron,
+            task,
+            workflow,
+            allow,
+            now,
+        } => {
             jarvis_core::workflow::parse_cron(cron)?;
             let (kind, payload) = match (task, workflow) {
                 (Some(t), None) => ("task", t.clone()),
                 (None, Some(w)) => {
-                    let abs = std::fs::canonicalize(w).with_context(|| format!("{} não existe", w.display()))?;
+                    let abs = std::fs::canonicalize(w)
+                        .with_context(|| format!("{} não existe", w.display()))?;
                     jarvis_core::workflow::Workflow::load(&abs)?;
                     ("workflow", abs.to_string_lossy().to_string())
                 }
                 _ => bail!("informe --task ou --workflow"),
             };
             let id = rt.store.add_schedule(name, cron, kind, &payload, allow)?;
-            let baseline = if *now { chrono::Utc::now() - chrono::Duration::days(366) } else { chrono::Utc::now() };
+            let baseline = if *now {
+                chrono::Utc::now() - chrono::Duration::days(366)
+            } else {
+                chrono::Utc::now()
+            };
             rt.store.set_schedule_last_run(id, &baseline.to_rfc3339())?;
             println!("agendamento #{id} criado. Rode `jarvis daemon` (ou o serviço systemd --user) para executá-lo.");
         }
         ScheduleCmd::List => {
             for s in rt.store.list_schedules()? {
-                println!("#{:<3} {:<20} {:<16} {:<8} {}  {}", s.id, s.name, s.cron, s.kind, s.payload.chars().take(60).collect::<String>(), dim(&format!("última: {}", s.last_run.unwrap_or_default())));
+                println!(
+                    "#{:<3} {:<20} {:<16} {:<8} {}  {}",
+                    s.id,
+                    s.name,
+                    s.cron,
+                    s.kind,
+                    s.payload.chars().take(60).collect::<String>(),
+                    dim(&format!("última: {}", s.last_run.unwrap_or_default()))
+                );
             }
         }
-        ScheduleCmd::Delete { id } => println!("{}", if rt.store.delete_schedule(*id)? { "removido" } else { "não existe" }),
+        ScheduleCmd::Delete { id } => println!(
+            "{}",
+            if rt.store.delete_schedule(*id)? {
+                "removido"
+            } else {
+                "não existe"
+            }
+        ),
     }
     Ok(0)
 }
@@ -525,7 +808,9 @@ pub async fn schedule(cli: &Cli, cmd: &ScheduleCmd) -> Result<i32> {
 pub async fn daemon(cli: Arc<Cli>, once: bool) -> Result<i32> {
     let lock = data_dir().join("daemon.pid");
     if let Ok(pid) = std::fs::read_to_string(&lock) {
-        if Path::new(&format!("/proc/{}", pid.trim())).exists() && pid.trim() != std::process::id().to_string() {
+        if Path::new(&format!("/proc/{}", pid.trim())).exists()
+            && pid.trim() != std::process::id().to_string()
+        {
             bail!("daemon já em execução (pid {})", pid.trim());
         }
     }
@@ -533,27 +818,49 @@ pub async fn daemon(cli: Arc<Cli>, once: bool) -> Result<i32> {
     std::fs::write(&lock, std::process::id().to_string())?;
     let rt = runtime(&cli).await?;
     let sink: Arc<dyn EventSink> = Arc::new(Printer { json: cli.json });
-    println!("{}", dim("daemon de agendamentos iniciado (nenhuma porta de rede é aberta)"));
+    println!(
+        "{}",
+        dim("daemon de agendamentos iniciado (nenhuma porta de rede é aberta)")
+    );
     let cancel = ctrlc_token();
     loop {
         for s in rt.store.list_schedules()?.into_iter().filter(|s| s.enabled) {
             let now = chrono::Utc::now();
-            if !jarvis_core::workflow::is_due(&s.cron, s.last_run.as_deref(), now, now).unwrap_or(false) {
+            if !jarvis_core::workflow::is_due(&s.cron, s.last_run.as_deref(), now, now)
+                .unwrap_or(false)
+            {
                 continue;
             }
             rt.store.set_schedule_last_run(s.id, &now.to_rfc3339())?;
             println!("{} #{} {}", bold("executando agendamento"), s.id, s.name);
-            let allowed: Vec<String> = s.allowed_tools.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
-            let approver: Arc<dyn Approver> = Arc::new(NonInteractive { preapproved: allowed });
+            let allowed: Vec<String> = s
+                .allowed_tools
+                .split(',')
+                .map(|t| t.trim().to_string())
+                .filter(|t| !t.is_empty())
+                .collect();
+            let approver: Arc<dyn Approver> = Arc::new(NonInteractive {
+                preapproved: allowed,
+            });
             let result: Result<()> = async {
                 if s.kind == "workflow" {
                     let wf = jarvis_core::workflow::Workflow::load(Path::new(&s.payload))?;
-                    let sel = rt.select_model(cli.model.as_deref(), &wf.name, approver.as_ref()).await?;
+                    let sel = rt
+                        .select_model(cli.model.as_deref(), &wf.name, approver.as_ref())
+                        .await?;
                     let agent = rt.agent(&sel, approver.clone(), sink.clone());
-                    let out = jarvis_core::workflow::run_workflow(&agent, &wf, cancel.child_token()).await?;
-                    println!("  workflow {}: {}", if out.ok { "ok" } else { "falhou" }, out.log.join("; "));
+                    let out =
+                        jarvis_core::workflow::run_workflow(&agent, &wf, cancel.child_token())
+                            .await?;
+                    println!(
+                        "  workflow {}: {}",
+                        if out.ok { "ok" } else { "falhou" },
+                        out.log.join("; ")
+                    );
                 } else {
-                    let sel = rt.select_model(cli.model.as_deref(), &s.payload, approver.as_ref()).await?;
+                    let sel = rt
+                        .select_model(cli.model.as_deref(), &s.payload, approver.as_ref())
+                        .await?;
                     let agent = rt.agent(&sel, approver.clone(), sink.clone());
                     let out = agent.start(&s.payload, cancel.child_token()).await?;
                     println!("  tarefa: {}", out.status.as_str());
@@ -582,7 +889,9 @@ pub async fn voice(cli: Arc<Cli>, cmd: &VoiceCmd) -> Result<i32> {
     let cfg = load_config(&cli)?;
     let dir = tempfile::tempdir()?;
     let mut c2 = cfg.clone();
-    c2.permissions.workspace_roots.push(dir.path().to_string_lossy().to_string());
+    c2.permissions
+        .workspace_roots
+        .push(dir.path().to_string_lossy().to_string());
     let ctx = jarvis_tools::testutil::context_with(c2);
     match cmd {
         VoiceCmd::Transcribe { file, lang } => {
@@ -605,7 +914,21 @@ pub async fn voice(cli: Arc<Cli>, cmd: &VoiceCmd) -> Result<i32> {
             }
             let wav = dir.path().join("mic.wav");
             println!("gravando {seconds} s…");
-            let st = tokio::process::Command::new("arecord").args(["-q", "-f", "S16_LE", "-r", "16000", "-c", "1", "-d", &seconds.to_string()]).arg(&wav).status().await?;
+            let st = tokio::process::Command::new("arecord")
+                .args([
+                    "-q",
+                    "-f",
+                    "S16_LE",
+                    "-r",
+                    "16000",
+                    "-c",
+                    "1",
+                    "-d",
+                    &seconds.to_string(),
+                ])
+                .arg(&wav)
+                .status()
+                .await?;
             if !st.success() {
                 bail!("falha ao gravar do microfone");
             }

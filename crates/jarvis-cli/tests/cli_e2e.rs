@@ -14,9 +14,16 @@ impl Drop for Server {
 fn start_mock() -> (Server, u16) {
     use std::io::BufRead;
     let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/mock_llm.py");
-    let mut child = Command::new("python3").arg(script).arg("0").stdout(std::process::Stdio::piped()).spawn().expect("python3");
+    let mut child = Command::new("python3")
+        .arg(script)
+        .arg("0")
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("python3");
     let mut line = String::new();
-    std::io::BufReader::new(child.stdout.take().unwrap()).read_line(&mut line).unwrap();
+    std::io::BufReader::new(child.stdout.take().unwrap())
+        .read_line(&mut line)
+        .unwrap();
     let port: u16 = line.trim().parse().expect("porta do mock");
     (Server(child), port)
 }
@@ -63,9 +70,17 @@ fn jarvis(home: &Path, cfg: &Path, args: &[&str]) -> std::process::Output {
 fn run_task_end_to_end_with_verification() {
     let (_srv, port) = start_mock();
     let (home, cfg) = setup(port);
-    let out = jarvis(home.path(), &cfg, &["--yes", "run", "gere um relatório de dados.csv"]);
+    let out = jarvis(
+        home.path(),
+        &cfg,
+        &["--yes", "run", "gere um relatório de dados.csv"],
+    );
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(out.status.success(), "stdout:\n{stdout}\nstderr:\n{}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stdout:\n{stdout}\nstderr:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     assert!(stdout.contains("concluído e verificado"), "{stdout}");
     let report = std::fs::read_to_string(home.path().join("ws/saida/relatorio.txt")).unwrap();
     assert_eq!(report, "relatorio: dados.csv tem 3 linhas\n");
@@ -73,7 +88,11 @@ fn run_task_end_to_end_with_verification() {
     let list = jarvis(home.path(), &cfg, &["sessions"]);
     assert!(String::from_utf8_lossy(&list.stdout).contains("completed"));
     let audit = jarvis(home.path(), &cfg, &["audit", "verify"]);
-    assert!(String::from_utf8_lossy(&audit.stdout).contains("íntegras"), "{}", String::from_utf8_lossy(&audit.stdout));
+    assert!(
+        String::from_utf8_lossy(&audit.stdout).contains("íntegras"),
+        "{}",
+        String::from_utf8_lossy(&audit.stdout)
+    );
 }
 
 #[test]
@@ -81,12 +100,23 @@ fn non_interactive_denies_writes_and_admin_is_never_auto_approved() {
     let (_srv, port) = start_mock();
     let (home, cfg) = setup(port);
     // Without --yes and without a TTY, the write needs approval and is denied.
-    let out = jarvis(home.path(), &cfg, &["run", "gere um relatório de dados.csv"]);
-    assert!(!home.path().join("ws/saida/relatorio.txt").exists(), "{}", String::from_utf8_lossy(&out.stdout));
+    let out = jarvis(
+        home.path(),
+        &cfg,
+        &["run", "gere um relatório de dados.csv"],
+    );
+    assert!(
+        !home.path().join("ws/saida/relatorio.txt").exists(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
     // Even with --yes, sudo is denied.
     let out = jarvis(home.path(), &cfg, &["--yes", "run", "instale com sudo"]);
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains("NEGOU") || stdout.contains("negado"), "{stdout}");
+    assert!(
+        stdout.contains("NEGOU") || stdout.contains("negado"),
+        "{stdout}"
+    );
 }
 
 #[test]
@@ -95,8 +125,15 @@ fn json_events_and_memory_cli() {
     let (home, cfg) = setup(port);
     let out = jarvis(home.path(), &cfg, &["--json", "run", "oi"]);
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.lines().any(|l| l.contains("\"kind\":\"finished\"")), "{stdout}");
-    let out = jarvis(home.path(), &cfg, &["memory", "add", "prefiro", "PDF", "--kind", "preference"]);
+    assert!(
+        stdout.lines().any(|l| l.contains("\"kind\":\"finished\"")),
+        "{stdout}"
+    );
+    let out = jarvis(
+        home.path(),
+        &cfg,
+        &["memory", "add", "prefiro", "PDF", "--kind", "preference"],
+    );
     assert!(out.status.success());
     let out = jarvis(home.path(), &cfg, &["memory", "list"]);
     assert!(String::from_utf8_lossy(&out.stdout).contains("prefiro PDF"));
@@ -127,15 +164,43 @@ task = "oi"
     .unwrap();
     let out = jarvis(home.path(), &cfg, &["workflow", wf.to_str().unwrap()]);
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(out.status.success(), "{stdout}\n{}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "{stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let written = std::fs::read_to_string(home.path().join("ws/contagem.txt")).unwrap();
-    assert!(written.contains("exit code: 0") && written.contains('3'), "{written}");
+    assert!(
+        written.contains("exit code: 0") && written.contains('3'),
+        "{written}"
+    );
 
-    let out = jarvis(home.path(), &cfg, &["schedule", "add", "--name", "diario", "--cron", "0 8 * * *", "--task", "oi", "--now"]);
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let out = jarvis(
+        home.path(),
+        &cfg,
+        &[
+            "schedule",
+            "add",
+            "--name",
+            "diario",
+            "--cron",
+            "0 8 * * *",
+            "--task",
+            "oi",
+            "--now",
+        ],
+    );
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let out = jarvis(home.path(), &cfg, &["daemon", "--once"]);
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains("executando agendamento") && stdout.contains("tarefa: completed"), "{stdout}");
+    assert!(
+        stdout.contains("executando agendamento") && stdout.contains("tarefa: completed"),
+        "{stdout}"
+    );
     // Not due again right after running.
     let out = jarvis(home.path(), &cfg, &["daemon", "--once"]);
     assert!(!String::from_utf8_lossy(&out.stdout).contains("executando agendamento"));

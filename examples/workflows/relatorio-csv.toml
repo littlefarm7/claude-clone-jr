@@ -1,0 +1,19 @@
+# jarvis workflow examples/workflows/relatorio-csv.toml --var pasta=~/jarvis-work/vendas
+name = "relatorio-csv"
+description = "Lista CSVs de uma pasta e gera um relatório em PDF"
+# Ferramentas que podem rodar sem perguntar quando o workflow é agendado (modo não interativo).
+allowed_tools = ["doc_create", "write_file"]
+
+[vars]
+pasta = "~/jarvis-work"
+
+[[steps]]
+tool = "glob"
+args = { pattern = "**/*.csv", path = "{{pasta}}" }
+save_as = "arquivos"
+
+[[steps]]
+task = """Leia os arquivos CSV abaixo com doc_read e crie {{pasta}}/relatorio.pdf com doc_create,
+contendo para cada arquivo: número de linhas, colunas e três observações.
+Arquivos:
+{{arquivos}}"""

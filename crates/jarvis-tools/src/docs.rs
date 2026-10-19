@@ -22,12 +22,18 @@ pub fn register(r: &mut ToolRegistry) {
 }
 
 fn ext(p: &Path) -> String {
-    p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default()
+    p.extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default()
 }
 
 async fn run_quiet(program: &str, args: &[&str], timeout: u64) -> Result<std::process::Output> {
     let mut c = tokio::process::Command::new(program);
-    c.args(args).env_clear().envs(crate::shell::scrubbed_env()).stdin(std::process::Stdio::null()).kill_on_drop(true);
+    c.args(args)
+        .env_clear()
+        .envs(crate::shell::scrubbed_env())
+        .stdin(std::process::Stdio::null())
+        .kill_on_drop(true);
     tokio::time::timeout(Duration::from_secs(timeout), c.output())
         .await
         .with_context(|| format!("{program}: tempo esgotado"))?
@@ -38,13 +44,20 @@ pub async fn pdf_text(p: &Path) -> Result<String> {
     if which("pdftotext").is_none() {
         bail!("pdftotext não instalado (sudo apt install poppler-utils)");
     }
-    let out = run_quiet("pdftotext", &["-layout", "-enc", "UTF-8", &p.to_string_lossy(), "-"], 120).await?;
+    let out = run_quiet(
+        "pdftotext",
+        &["-layout", "-enc", "UTF-8", &p.to_string_lossy(), "-"],
+        120,
+    )
+    .await?;
     if !out.status.success() {
         bail!("pdftotext falhou: {}", String::from_utf8_lossy(&out.stderr));
     }
     let text = String::from_utf8_lossy(&out.stdout).into_owned();
     if text.trim().is_empty() {
-        return Ok("(PDF sem texto extraível — provavelmente digitalizado; OCR requer tesseract)".into());
+        return Ok(
+            "(PDF sem texto extraível — provavelmente digitalizado; OCR requer tesseract)".into(),
+        );
     }
     Ok(text)
 }
@@ -69,10 +82,14 @@ fn cell(d: &Data) -> String {
 }
 
 pub fn spreadsheet_text(p: &Path, sheet: Option<&str>, max_rows: usize) -> Result<String> {
-    let mut wb = open_workbook_auto(p).with_context(|| format!("abrindo planilha {}", p.display()))?;
+    let mut wb =
+        open_workbook_auto(p).with_context(|| format!("abrindo planilha {}", p.display()))?;
     let names = wb.sheet_names().to_vec();
     let mut out = format!("Planilhas: {}\n", names.join(", "));
-    for name in names.iter().filter(|n| sheet.map(|s| s == n.as_str()).unwrap_or(true)) {
+    for name in names
+        .iter()
+        .filter(|n| sheet.map(|s| s == n.as_str()).unwrap_or(true))
+    {
         let range = wb.worksheet_range(name)?;
         let (rows, cols) = range.get_size();
         out.push_str(&format!("\n## {name} ({rows} linhas × {cols} colunas)\n"));
@@ -91,9 +108,16 @@ pub fn csv_text(p: &Path, max_rows: usize) -> Result<String> {
     let data = std::fs::read(p)?;
     let delim = {
         let head = String::from_utf8_lossy(&data[..data.len().min(4096)]).into_owned();
-        [b',', b';', b'\t', b'|'].into_iter().max_by_key(|d| head.matches(*d as char).count()).unwrap_or(b',')
+        (*b",;\t|")
+            .into_iter()
+            .max_by_key(|d| head.matches(*d as char).count())
+            .unwrap_or(b',')
     };
-    let mut r = csv::ReaderBuilder::new().delimiter(delim).flexible(true).has_headers(false).from_reader(data.as_slice());
+    let mut r = csv::ReaderBuilder::new()
+        .delimiter(delim)
+        .flexible(true)
+        .has_headers(false)
+        .from_reader(data.as_slice());
     let mut out = String::new();
     let mut n = 0;
     let mut cols = 0;
@@ -106,7 +130,15 @@ pub fn csv_text(p: &Path, max_rows: usize) -> Result<String> {
         }
         n += 1;
     }
-    Ok(format!("CSV: {n} linhas × {cols} colunas (separador '{}')\n{out}{}", delim as char, if n > max_rows { format!("[... {} linhas omitidas]\n", n - max_rows) } else { String::new() }))
+    Ok(format!(
+        "CSV: {n} linhas × {cols} colunas (separador '{}')\n{out}{}",
+        delim as char,
+        if n > max_rows {
+            format!("[... {} linhas omitidas]\n", n - max_rows)
+        } else {
+            String::new()
+        }
+    ))
 }
 
 /// Extract text from any supported document type.
@@ -122,12 +154,31 @@ pub async fn read_document(p: &Path, sheet: Option<&str>, max_rows: usize) -> Re
         "doc" | "ppt" | "rtf" | "odp" => {
             // Legacy formats: convert to text with LibreOffice when available.
             if which("soffice").is_none() {
-                bail!("formato .{} requer LibreOffice (sudo apt install libreoffice)", ext(p));
+                bail!(
+                    "formato .{} requer LibreOffice (sudo apt install libreoffice)",
+                    ext(p)
+                );
             }
             let tmp = tempfile::tempdir()?;
-            let out = run_quiet("soffice", &["--headless", "--convert-to", "txt:Text", "--outdir", &tmp.path().to_string_lossy(), &p.to_string_lossy()], 180).await?;
-            let txt = tmp.path().join(p.with_extension("txt").file_name().unwrap());
-            std::fs::read_to_string(&txt).with_context(|| format!("conversão falhou: {}", String::from_utf8_lossy(&out.stderr)))
+            let out = run_quiet(
+                "soffice",
+                &[
+                    "--headless",
+                    "--convert-to",
+                    "txt:Text",
+                    "--outdir",
+                    &tmp.path().to_string_lossy(),
+                    &p.to_string_lossy(),
+                ],
+                180,
+            )
+            .await?;
+            let txt = tmp
+                .path()
+                .join(p.with_extension("txt").file_name().unwrap());
+            std::fs::read_to_string(&txt).with_context(|| {
+                format!("conversão falhou: {}", String::from_utf8_lossy(&out.stderr))
+            })
         }
         _ => {
             let bytes = std::fs::read(p)?;
@@ -154,21 +205,34 @@ impl Tool for DocRead {
     }
     fn assess(&self, args: &Value, ctx: &ToolContext) -> RiskAssessment {
         let p = ctx.guard.resolve(arg_str(args, "path").unwrap_or(""));
-        ctx.guard.assess_read(&p, format!("ler documento {}", p.display()))
+        ctx.guard
+            .assess_read(&p, format!("ler documento {}", p.display()))
     }
     async fn call(&self, args: Value, ctx: &ToolContext) -> Result<ToolOutput> {
         let p = ctx.guard.resolve(arg_str(&args, "path").unwrap_or(""));
-        let text = read_document(&p, arg_str(&args, "sheet"), arg_u64(&args, "max_rows").unwrap_or(200) as usize).await?;
+        let text = read_document(
+            &p,
+            arg_str(&args, "sheet"),
+            arg_u64(&args, "max_rows").unwrap_or(200) as usize,
+        )
+        .await?;
         let max = arg_u64(&args, "max_chars").unwrap_or(30_000) as usize;
         // Documents often come from outside: treat their content as data.
-        Ok(ToolOutput::ok(jarvis_core::safety::truncate_middle(&text, max)).untrusted(format!("doc:{}", p.display())))
+        Ok(
+            ToolOutput::ok(jarvis_core::safety::truncate_middle(&text, max))
+                .untrusted(format!("doc:{}", p.display())),
+        )
     }
 }
 
 // ---------------------------------------------------------------------------
 
 fn rows_arg(args: &Value) -> Option<Vec<Vec<Value>>> {
-    args.get("rows").and_then(|r| r.as_array()).map(|rows| rows.iter().map(|r| r.as_array().cloned().unwrap_or_else(|| vec![r.clone()])).collect())
+    args.get("rows").and_then(|r| r.as_array()).map(|rows| {
+        rows.iter()
+            .map(|r| r.as_array().cloned().unwrap_or_else(|| vec![r.clone()]))
+            .collect()
+    })
 }
 
 fn write_xlsx(p: &Path, rows: &[Vec<Value>], sheet: &str) -> Result<()> {
@@ -195,7 +259,9 @@ fn write_xlsx(p: &Path, rows: &[Vec<Value>], sheet: &str) -> Result<()> {
                     if r == 0 {
                         ws.write_string_with_format(r, c, s, &bold)?;
                     } else if let Ok(f) = s.replace(',', ".").parse::<f64>() {
-                        if s.chars().all(|ch| ch.is_ascii_digit() || ch == ',' || ch == '.' || ch == '-') {
+                        if s.chars()
+                            .all(|ch| ch.is_ascii_digit() || ch == ',' || ch == '.' || ch == '-')
+                        {
                             ws.write_number(r, c, f)?;
                         } else {
                             ws.write_string(r, c, s)?;
@@ -236,7 +302,18 @@ async fn pandoc_convert(input_md: &str, out: &Path, title: Option<&str>) -> Resu
     }
     body.push_str(input_md);
     std::fs::write(tmp.path(), body)?;
-    let o = run_quiet("pandoc", &[&tmp.path().to_string_lossy(), "-f", "markdown", "-o", &out.to_string_lossy()], 120).await?;
+    let o = run_quiet(
+        "pandoc",
+        &[
+            &tmp.path().to_string_lossy(),
+            "-f",
+            "markdown",
+            "-o",
+            &out.to_string_lossy(),
+        ],
+        120,
+    )
+    .await?;
     if !o.status.success() {
         bail!("pandoc falhou: {}", String::from_utf8_lossy(&o.stderr));
     }
@@ -250,11 +327,28 @@ pub async fn soffice_convert(input: &Path, fmt: &str, outdir: &Path) -> Result<P
     // A private profile avoids clashing with a running LibreOffice instance.
     let profile = tempfile::tempdir()?;
     let profile_url = format!("-env:UserInstallation=file://{}", profile.path().display());
-    let o = run_quiet("soffice", &[&profile_url, "--headless", "--convert-to", fmt, "--outdir", &outdir.to_string_lossy(), &input.to_string_lossy()], 240).await?;
+    let o = run_quiet(
+        "soffice",
+        &[
+            &profile_url,
+            "--headless",
+            "--convert-to",
+            fmt,
+            "--outdir",
+            &outdir.to_string_lossy(),
+            &input.to_string_lossy(),
+        ],
+        240,
+    )
+    .await?;
     let ext = fmt.split(':').next().unwrap_or(fmt);
     let produced = outdir.join(input.with_extension(ext).file_name().unwrap());
     if !produced.exists() {
-        bail!("LibreOffice não gerou {}: {}", produced.display(), String::from_utf8_lossy(&o.stderr));
+        bail!(
+            "LibreOffice não gerou {}: {}",
+            produced.display(),
+            String::from_utf8_lossy(&o.stderr)
+        );
     }
     Ok(produced)
 }
@@ -283,7 +377,8 @@ impl Tool for DocCreate {
     fn assess(&self, args: &Value, ctx: &ToolContext) -> RiskAssessment {
         let p = ctx.guard.resolve(arg_str(args, "path").unwrap_or(""));
         let verb = if p.exists() { "sobrescrever" } else { "criar" };
-        ctx.guard.assess_write(&p, Risk::Write, format!("{verb} documento {}", p.display()))
+        ctx.guard
+            .assess_write(&p, Risk::Write, format!("{verb} documento {}", p.display()))
     }
     async fn call(&self, args: Value, ctx: &ToolContext) -> Result<ToolOutput> {
         let p = ctx.guard.resolve(arg_str(&args, "path").unwrap_or(""));
@@ -316,7 +411,9 @@ impl Tool for DocCreate {
             }
             "odt" => {
                 let tmp = tempfile::tempdir()?;
-                let docx = tmp.path().join(p.with_extension("docx").file_name().unwrap());
+                let docx = tmp
+                    .path()
+                    .join(p.with_extension("docx").file_name().unwrap());
                 crate::ooxml::write_docx(&docx, title, content)?;
                 let produced = soffice_convert(&docx, "odt", tmp.path()).await?;
                 std::fs::copy(produced, &p)?;
@@ -332,7 +429,9 @@ impl Tool for DocCreate {
             "pdf" => {
                 if engine == "auto" && has_pandoc && which("soffice").is_some() {
                     let tmp = tempfile::tempdir()?;
-                    let docx = tmp.path().join(p.with_extension("docx").file_name().unwrap());
+                    let docx = tmp
+                        .path()
+                        .join(p.with_extension("docx").file_name().unwrap());
                     pandoc_convert(content, &docx, title).await?;
                     let produced = soffice_convert(&docx, "pdf", tmp.path()).await?;
                     std::fs::copy(produced, &p)?;
@@ -354,17 +453,27 @@ impl Tool for DocCreate {
             other => bail!("formato .{other} não suportado por doc_create"),
         }
         // Verify by reading the result back.
-        let size = std::fs::metadata(&p).with_context(|| format!("{} não foi criado", p.display()))?.len();
+        let size = std::fs::metadata(&p)
+            .with_context(|| format!("{} não foi criado", p.display()))?
+            .len();
         let check = match ext(&p).as_str() {
-            "pdf" | "docx" | "pptx" | "xlsx" | "csv" | "odt" => read_document(&p, None, 5).await.map(|t| t.chars().take(300).collect::<String>()),
+            "pdf" | "docx" | "pptx" | "xlsx" | "csv" | "odt" => read_document(&p, None, 5)
+                .await
+                .map(|t| t.chars().take(300).collect::<String>()),
             _ => Ok(String::new()),
         };
         let check = match check {
-            Ok(s) if !s.is_empty() => format!("\nVerificação (início do conteúdo lido de volta):\n{s}"),
+            Ok(s) if !s.is_empty() => {
+                format!("\nVerificação (início do conteúdo lido de volta):\n{s}")
+            }
             Ok(_) => String::new(),
             Err(e) => format!("\nAviso: não foi possível reler o arquivo: {e}"),
         };
-        Ok(ToolOutput::ok(format!("Criado {} ({size} bytes, via {method}).{check}", p.display())).with_artifact(p))
+        Ok(ToolOutput::ok(format!(
+            "Criado {} ({size} bytes, via {method}).{check}",
+            p.display()
+        ))
+        .with_artifact(p))
     }
 }
 
@@ -384,21 +493,40 @@ impl Tool for DocConvert {
     fn assess(&self, args: &Value, ctx: &ToolContext) -> RiskAssessment {
         let input = ctx.guard.resolve(arg_str(args, "path").unwrap_or(""));
         let to = arg_str(args, "to").unwrap_or("pdf");
-        let out = arg_str(args, "output").map(|o| ctx.guard.resolve(o)).unwrap_or_else(|| input.with_extension(to));
+        let out = arg_str(args, "output")
+            .map(|o| ctx.guard.resolve(o))
+            .unwrap_or_else(|| input.with_extension(to));
         let r = ctx.guard.assess_read(&input, String::new());
         if r.force.is_some() {
             return r;
         }
-        ctx.guard.assess_write(&out, Risk::Write, format!("converter {} → {}", input.display(), out.display()))
+        ctx.guard.assess_write(
+            &out,
+            Risk::Write,
+            format!("converter {} → {}", input.display(), out.display()),
+        )
     }
     async fn call(&self, args: Value, ctx: &ToolContext) -> Result<ToolOutput> {
         let input = ctx.guard.resolve(arg_str(&args, "path").unwrap_or(""));
-        let to = arg_str(&args, "to").unwrap_or("pdf").trim_start_matches('.').to_lowercase();
-        let out = arg_str(&args, "output").map(|o| ctx.guard.resolve(o)).unwrap_or_else(|| input.with_extension(&to));
+        let to = arg_str(&args, "to")
+            .unwrap_or("pdf")
+            .trim_start_matches('.')
+            .to_lowercase();
+        let out = arg_str(&args, "output")
+            .map(|o| ctx.guard.resolve(o))
+            .unwrap_or_else(|| input.with_extension(&to));
         let src = ext(&input);
         let pandoc_formats = ["md", "markdown", "html", "epub", "rst", "tex", "org"];
-        if which("pandoc").is_some() && (pandoc_formats.contains(&src.as_str()) || pandoc_formats.contains(&to.as_str())) && to != "pdf" {
-            let o = run_quiet("pandoc", &[&input.to_string_lossy(), "-o", &out.to_string_lossy()], 120).await?;
+        if which("pandoc").is_some()
+            && (pandoc_formats.contains(&src.as_str()) || pandoc_formats.contains(&to.as_str()))
+            && to != "pdf"
+        {
+            let o = run_quiet(
+                "pandoc",
+                &[&input.to_string_lossy(), "-o", &out.to_string_lossy()],
+                120,
+            )
+            .await?;
             if !o.status.success() {
                 bail!("pandoc falhou: {}", String::from_utf8_lossy(&o.stderr));
             }
@@ -407,8 +535,13 @@ impl Tool for DocConvert {
             let produced = soffice_convert(&input, &to, tmp.path()).await?;
             std::fs::copy(produced, &out)?;
         }
-        let size = std::fs::metadata(&out).context("conversão não gerou o arquivo")?.len();
-        Ok(ToolOutput::ok(format!("Convertido para {} ({size} bytes)", out.display())).with_artifact(out))
+        let size = std::fs::metadata(&out)
+            .context("conversão não gerou o arquivo")?
+            .len();
+        Ok(
+            ToolOutput::ok(format!("Convertido para {} ({size} bytes)", out.display()))
+                .with_artifact(out),
+        )
     }
 }
 
@@ -427,7 +560,11 @@ impl Tool for LatexCompile {
     }
     fn assess(&self, args: &Value, ctx: &ToolContext) -> RiskAssessment {
         let p = ctx.guard.resolve(arg_str(args, "path").unwrap_or(""));
-        ctx.guard.assess_write(&p.with_extension("pdf"), Risk::Execute, format!("compilar LaTeX {}", p.display()))
+        ctx.guard.assess_write(
+            &p.with_extension("pdf"),
+            Risk::Execute,
+            format!("compilar LaTeX {}", p.display()),
+        )
     }
     async fn call(&self, args: Value, ctx: &ToolContext) -> Result<ToolOutput> {
         let p = ctx.guard.resolve(arg_str(&args, "path").unwrap_or(""));
@@ -440,17 +577,46 @@ impl Tool for LatexCompile {
         let file = p.file_name().unwrap().to_string_lossy().to_string();
         let a: Vec<String> = match engine {
             "tectonic" => vec!["--untrusted".into(), file.clone()],
-            "latexmk" => vec!["-pdf".into(), "-interaction=nonstopmode".into(), "-halt-on-error".into(), "-no-shell-escape".into(), file.clone()],
-            e => vec![format!("-interaction=nonstopmode"), "-halt-on-error".into(), "-no-shell-escape".into(), if e == "pdflatex" { "-output-format=pdf".into() } else { "-recorder".into() }, file.clone()],
+            "latexmk" => vec![
+                "-pdf".into(),
+                "-interaction=nonstopmode".into(),
+                "-halt-on-error".into(),
+                "-no-shell-escape".into(),
+                file.clone(),
+            ],
+            e => vec![
+                format!("-interaction=nonstopmode"),
+                "-halt-on-error".into(),
+                "-no-shell-escape".into(),
+                if e == "pdflatex" {
+                    "-output-format=pdf".into()
+                } else {
+                    "-recorder".into()
+                },
+                file.clone(),
+            ],
         };
         let cmd = crate::shell::build_command(engine, &a, &dir, ctx, true);
         let res = crate::shell::run_command(cmd, Duration::from_secs(300), ctx).await?;
         let pdf = p.with_extension("pdf");
         if res.ok() && pdf.exists() {
-            return Ok(ToolOutput::ok(format!("PDF gerado: {} ({} bytes) com {engine}", pdf.display(), std::fs::metadata(&pdf)?.len())).with_artifact(pdf));
+            return Ok(ToolOutput::ok(format!(
+                "PDF gerado: {} ({} bytes) com {engine}",
+                pdf.display(),
+                std::fs::metadata(&pdf)?.len()
+            ))
+            .with_artifact(pdf));
         }
         let log = std::fs::read_to_string(p.with_extension("log")).unwrap_or_default();
-        let errors: Vec<&str> = log.lines().filter(|l| l.starts_with('!') || l.contains("Error")).take(20).collect();
-        Ok(ToolOutput::err(format!("Falha ao compilar com {engine}.\n{}\n{}", errors.join("\n"), res.render(4000))))
+        let errors: Vec<&str> = log
+            .lines()
+            .filter(|l| l.starts_with('!') || l.contains("Error"))
+            .take(20)
+            .collect();
+        Ok(ToolOutput::err(format!(
+            "Falha ao compilar com {engine}.\n{}\n{}",
+            errors.join("\n"),
+            res.render(4000)
+        )))
     }
 }

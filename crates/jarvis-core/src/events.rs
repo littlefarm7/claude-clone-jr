@@ -13,20 +13,64 @@ use crate::store::SessionStatus;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AgentEvent {
-    SessionStarted { session_id: String, model: String, resumed: bool },
-    ModelSelected { model: String, reason: String },
-    ModelCall { n: u32, phase: String },
-    AssistantText { text: String },
-    PlanUpdated { plan: Plan },
-    ToolCall { id: String, name: String, args: Value, risk: Risk, summary: String },
-    ToolDecision { id: String, name: String, decision: String },
-    ToolResult { id: String, name: String, ok: bool, preview: String, ms: u64 },
-    Warning { message: String },
-    VerificationStarted { round: u32 },
-    VerificationResult { passed: bool, notes: String },
-    LimitReached { limit: String },
-    Finished { status: SessionStatus, summary: String },
-    Log { message: String },
+    SessionStarted {
+        session_id: String,
+        model: String,
+        resumed: bool,
+    },
+    ModelSelected {
+        model: String,
+        reason: String,
+    },
+    ModelCall {
+        n: u32,
+        phase: String,
+    },
+    AssistantText {
+        text: String,
+    },
+    PlanUpdated {
+        plan: Plan,
+    },
+    ToolCall {
+        id: String,
+        name: String,
+        args: Value,
+        risk: Risk,
+        summary: String,
+    },
+    ToolDecision {
+        id: String,
+        name: String,
+        decision: String,
+    },
+    ToolResult {
+        id: String,
+        name: String,
+        ok: bool,
+        preview: String,
+        ms: u64,
+    },
+    Warning {
+        message: String,
+    },
+    VerificationStarted {
+        round: u32,
+    },
+    VerificationResult {
+        passed: bool,
+        notes: String,
+    },
+    LimitReached {
+        limit: String,
+    },
+    Finished {
+        status: SessionStatus,
+        summary: String,
+    },
+    Log {
+        message: String,
+    },
 }
 
 pub trait EventSink: Send + Sync {
@@ -89,7 +133,10 @@ pub struct NonInteractive {
 #[async_trait]
 impl Approver for NonInteractive {
     async fn approve(&self, req: ApprovalRequest) -> ApprovalDecision {
-        if req.risk != Risk::Admin && req.risk != Risk::Destructive && self.preapproved.iter().any(|t| t == &req.tool) {
+        if req.risk != Risk::Admin
+            && req.risk != Risk::Destructive
+            && self.preapproved.iter().any(|t| t == &req.tool)
+        {
             ApprovalDecision::AllowOnce
         } else {
             ApprovalDecision::Deny
@@ -97,13 +144,13 @@ impl Approver for NonInteractive {
     }
 }
 
-/// Approves everything except admin actions (tests / explicit `--yes`).
+/// `--yes`: approves write/execute/network, never destructive or admin actions.
 pub struct AutoApprove;
 
 #[async_trait]
 impl Approver for AutoApprove {
     async fn approve(&self, req: ApprovalRequest) -> ApprovalDecision {
-        if req.risk == Risk::Admin {
+        if req.risk >= Risk::Destructive {
             ApprovalDecision::Deny
         } else {
             ApprovalDecision::AllowOnce

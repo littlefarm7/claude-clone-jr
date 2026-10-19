@@ -36,8 +36,13 @@ pub fn is_private(ip: &IpAddr) -> bool {
                 || v.octets()[0] == 0
         }
         IpAddr::V6(v) => {
-            v.is_loopback() || v.is_unspecified() || (v.segments()[0] & 0xfe00) == 0xfc00 || (v.segments()[0] & 0xffc0) == 0xfe80
-                || v.to_ipv4_mapped().map(|m| is_private(&IpAddr::V4(m))).unwrap_or(false)
+            v.is_loopback()
+                || v.is_unspecified()
+                || (v.segments()[0] & 0xfe00) == 0xfc00
+                || (v.segments()[0] & 0xffc0) == 0xfe80
+                || v.to_ipv4_mapped()
+                    .map(|m| is_private(&IpAddr::V4(m)))
+                    .unwrap_or(false)
         }
     }
 }
@@ -56,9 +61,14 @@ pub async fn check_url(url: &str, cfg: &Config) -> Result<url::Url> {
     }
     let host = u.host_str().context("URL sem host")?;
     let port = u.port_or_known_default().unwrap_or(80);
-    let addrs: Vec<_> = tokio::net::lookup_host((host.trim_matches(['[', ']']), port)).await.with_context(|| format!("não foi possível resolver {host}"))?.collect();
+    let addrs: Vec<_> = tokio::net::lookup_host((host.trim_matches(['[', ']']), port))
+        .await
+        .with_context(|| format!("não foi possível resolver {host}"))?
+        .collect();
     if addrs.is_empty() || addrs.iter().any(|a| is_private(&a.ip())) {
-        bail!("{host} aponta para endereço local/privado; bloqueado (web.allow_private_hosts=false)");
+        bail!(
+            "{host} aponta para endereço local/privado; bloqueado (web.allow_private_hosts=false)"
+        );
     }
     Ok(u)
 }
@@ -68,15 +78,28 @@ pub async fn fetch(url: &str, cfg: &Config, max_bytes: usize) -> Result<(String,
     let c = client(30);
     let mut current = check_url(url, cfg).await?;
     for _ in 0..6 {
-        let resp = c.get(current.clone()).send().await.with_context(|| format!("falha ao buscar {current}"))?;
+        let resp = c
+            .get(current.clone())
+            .send()
+            .await
+            .with_context(|| format!("falha ao buscar {current}"))?;
         if resp.status().is_redirection() {
-            let loc = resp.headers().get("location").and_then(|l| l.to_str().ok()).context("redirecionamento sem Location")?;
+            let loc = resp
+                .headers()
+                .get("location")
+                .and_then(|l| l.to_str().ok())
+                .context("redirecionamento sem Location")?;
             let next = current.join(loc)?;
             current = check_url(next.as_str(), cfg).await?;
             continue;
         }
         let status = resp.status();
-        let ctype = resp.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
+        let ctype = resp
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
         let mut body = Vec::new();
         let mut resp = resp;
         while let Some(chunk) = resp.chunk().await? {
@@ -124,27 +147,41 @@ pub struct SearchResult {
 }
 
 fn decode_entities(s: &str) -> String {
-    html2text::from_read(s.as_bytes(), 10_000).trim().to_string()
+    html2text::from_read(s.as_bytes(), 10_000)
+        .trim()
+        .to_string()
 }
 
 /// Parse DuckDuckGo's HTML results page.
 pub fn parse_ddg(html: &str) -> Vec<SearchResult> {
-    let a_re = regex::Regex::new(r#"(?s)<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>"#).unwrap();
+    let a_re =
+        regex::Regex::new(r#"(?s)<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>"#)
+            .unwrap();
     let s_re = regex::Regex::new(r#"(?s)class="result__snippet"[^>]*>(.*?)</a>"#).unwrap();
     let tag = regex::Regex::new(r"<[^>]+>").unwrap();
-    let snippets: Vec<String> = s_re.captures_iter(html).map(|c| decode_entities(&tag.replace_all(&c[1], ""))).collect();
+    let snippets: Vec<String> = s_re
+        .captures_iter(html)
+        .map(|c| decode_entities(&tag.replace_all(&c[1], "")))
+        .collect();
     a_re.captures_iter(html)
         .enumerate()
         .map(|(i, c)| {
             let mut href = c[1].replace("&amp;", "&");
             if let Some(pos) = href.find("uddg=") {
                 let enc = href[pos + 5..].split('&').next().unwrap_or("");
-                href = url::form_urlencoded::parse(format!("x={enc}").as_bytes()).next().map(|(_, v)| v.into_owned()).unwrap_or(href);
+                href = url::form_urlencoded::parse(format!("x={enc}").as_bytes())
+                    .next()
+                    .map(|(_, v)| v.into_owned())
+                    .unwrap_or(href);
             }
             if href.starts_with("//") {
                 href = format!("https:{href}");
             }
-            SearchResult { title: decode_entities(&tag.replace_all(&c[2], "")), url: href, snippet: snippets.get(i).cloned().unwrap_or_default() }
+            SearchResult {
+                title: decode_entities(&tag.replace_all(&c[2], "")),
+                url: href,
+                snippet: snippets.get(i).cloned().unwrap_or_default(),
+            }
         })
         .collect()
 }
@@ -153,7 +190,14 @@ pub async fn search(query: &str, n: usize, cfg: &Config) -> Result<(String, Vec<
     let c = client(20);
     if let Some(base) = &cfg.web.searxng_url {
         let url = format!("{}/search", base.trim_end_matches('/'));
-        let v: Value = c.get(&url).query(&[("q", query), ("format", "json")]).send().await?.error_for_status()?.json().await?;
+        let v: Value = c
+            .get(&url)
+            .query(&[("q", query), ("format", "json")])
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
         let results = v["results"]
             .as_array()
             .cloned()
@@ -193,7 +237,14 @@ pub async fn search(query: &str, n: usize, cfg: &Config) -> Result<(String, Vec<
             .collect();
         return Ok(("brave".into(), results));
     }
-    let html = c.post("https://html.duckduckgo.com/html/").form(&[("q", query)]).send().await?.error_for_status()?.text().await?;
+    let html = c
+        .post("https://html.duckduckgo.com/html/")
+        .form(&[("q", query)])
+        .send()
+        .await?
+        .error_for_status()?
+        .text()
+        .await?;
     let mut r = parse_ddg(&html);
     r.truncate(n);
     Ok(("duckduckgo".into(), r))
@@ -211,17 +262,27 @@ impl Tool for WebSearch {
         }
     }
     fn assess(&self, args: &Value, _: &ToolContext) -> RiskAssessment {
-        RiskAssessment::new(Risk::Network, format!("pesquisar na web: {}", arg_str(args, "query").unwrap_or("")))
+        RiskAssessment::new(
+            Risk::Network,
+            format!("pesquisar na web: {}", arg_str(args, "query").unwrap_or("")),
+        )
     }
     async fn call(&self, args: Value, ctx: &ToolContext) -> Result<ToolOutput> {
         let q = arg_str(&args, "query").unwrap_or("");
         let n = arg_u64(&args, "max_results").unwrap_or(8).min(20) as usize;
         let (engine, results) = search(q, n, &ctx.cfg).await?;
         if results.is_empty() {
-            return Ok(ToolOutput::ok(format!("Nenhum resultado ({engine}).")).untrusted(format!("search:{engine}")));
+            return Ok(ToolOutput::ok(format!("Nenhum resultado ({engine})."))
+                .untrusted(format!("search:{engine}")));
         }
-        let text = results.iter().enumerate().map(|(i, r)| format!("{}. {}\n   {}\n   {}", i + 1, r.title, r.url, r.snippet)).collect::<Vec<_>>().join("\n");
-        Ok(ToolOutput::ok(format!("Resultados ({engine}):\n{text}")).untrusted(format!("search:{engine}")))
+        let text = results
+            .iter()
+            .enumerate()
+            .map(|(i, r)| format!("{}. {}\n   {}\n   {}", i + 1, r.title, r.url, r.snippet))
+            .collect::<Vec<_>>()
+            .join("\n");
+        Ok(ToolOutput::ok(format!("Resultados ({engine}):\n{text}"))
+            .untrusted(format!("search:{engine}")))
     }
 }
 
@@ -243,7 +304,11 @@ impl Tool for WebFetch {
         match arg_str(args, "save_to") {
             Some(p) => {
                 let p = ctx.guard.resolve(p);
-                let ra = ctx.guard.assess_write(&p, Risk::Write, format!("baixar {url} → {}", p.display()));
+                let ra = ctx.guard.assess_write(
+                    &p,
+                    Risk::Write,
+                    format!("baixar {url} → {}", p.display()),
+                );
                 if ra.force.is_some() {
                     ra
                 } else {
@@ -263,20 +328,36 @@ impl Tool for WebFetch {
                 std::fs::create_dir_all(d)?;
             }
             std::fs::write(&p, &body)?;
-            return Ok(ToolOutput::ok(format!("Salvo {} ({} bytes, {ctype}) de {final_url}", p.display(), body.len())).with_artifact(p));
+            return Ok(ToolOutput::ok(format!(
+                "Salvo {} ({} bytes, {ctype}) de {final_url}",
+                p.display(),
+                body.len()
+            ))
+            .with_artifact(p));
         }
         let max = arg_u64(&args, "max_chars").unwrap_or(20_000) as usize;
-        let text = if ctype.contains("html") || body.starts_with(b"<!") || body.starts_with(b"<html") {
-            html_to_text(&body, 120)
-        } else if ctype.contains("pdf") || body.starts_with(b"%PDF") {
-            let tmp = tempfile::Builder::new().suffix(".pdf").tempfile()?;
-            std::fs::write(tmp.path(), &body)?;
-            crate::docs::pdf_text(tmp.path()).await.unwrap_or_else(|e| format!("(PDF de {} bytes; extração falhou: {e})", body.len()))
-        } else if ctype.starts_with("text/") || ctype.contains("json") || ctype.contains("xml") || std::str::from_utf8(&body).is_ok() {
-            String::from_utf8_lossy(&body).into_owned()
-        } else {
-            return Ok(ToolOutput::ok(format!("Conteúdo binário ({ctype}, {} bytes). Use save_to para gravar.", body.len())).untrusted(src));
-        };
+        let text =
+            if ctype.contains("html") || body.starts_with(b"<!") || body.starts_with(b"<html") {
+                html_to_text(&body, 120)
+            } else if ctype.contains("pdf") || body.starts_with(b"%PDF") {
+                let tmp = tempfile::Builder::new().suffix(".pdf").tempfile()?;
+                std::fs::write(tmp.path(), &body)?;
+                crate::docs::pdf_text(tmp.path()).await.unwrap_or_else(|e| {
+                    format!("(PDF de {} bytes; extração falhou: {e})", body.len())
+                })
+            } else if ctype.starts_with("text/")
+                || ctype.contains("json")
+                || ctype.contains("xml")
+                || std::str::from_utf8(&body).is_ok()
+            {
+                String::from_utf8_lossy(&body).into_owned()
+            } else {
+                return Ok(ToolOutput::ok(format!(
+                    "Conteúdo binário ({ctype}, {} bytes). Use save_to para gravar.",
+                    body.len()
+                ))
+                .untrusted(src));
+            };
         let text = jarvis_core::safety::truncate_middle(&text, max);
         Ok(ToolOutput::ok(format!("URL: {final_url}\nTipo: {ctype}\n\n{text}")).untrusted(src))
     }
@@ -288,16 +369,35 @@ pub fn find_chromium(cfg: &Config) -> Option<PathBuf> {
     if let Some(p) = &cfg.web.chromium {
         return Some(jarvis_core::config::expand(p));
     }
-    for name in ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable", "brave-browser"] {
+    for name in [
+        "chromium",
+        "chromium-browser",
+        "google-chrome",
+        "google-chrome-stable",
+        "brave-browser",
+    ] {
         if let Some(p) = crate::shell::which(name) {
             return Some(p);
         }
     }
     // Playwright-managed browsers.
-    let base = std::env::var("PLAYWRIGHT_BROWSERS_PATH").unwrap_or_else(|_| "/opt/pw-browsers".into());
-    let mut dirs: Vec<PathBuf> = std::fs::read_dir(&base).ok()?.flatten().map(|e| e.path()).filter(|p| p.file_name().map(|n| n.to_string_lossy().starts_with("chromium-")).unwrap_or(false)).collect();
+    let base =
+        std::env::var("PLAYWRIGHT_BROWSERS_PATH").unwrap_or_else(|_| "/opt/pw-browsers".into());
+    let mut dirs: Vec<PathBuf> = std::fs::read_dir(&base)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .map(|n| n.to_string_lossy().starts_with("chromium-"))
+                .unwrap_or(false)
+        })
+        .collect();
     dirs.sort();
-    dirs.into_iter().rev().map(|d| d.join("chrome-linux/chrome")).find(|p| p.is_file())
+    dirs.into_iter()
+        .rev()
+        .map(|d| d.join("chrome-linux/chrome"))
+        .find(|p| p.is_file())
 }
 
 pub struct Browser;
@@ -324,12 +424,24 @@ impl Tool for Browser {
         if action == "text" {
             return RiskAssessment::new(Risk::Network, format!("abrir no navegador: {url}"));
         }
-        let out = ctx.guard.resolve(arg_str(args, "output").unwrap_or(if action == "pdf" { "pagina.pdf" } else { "captura.png" }));
-        ctx.guard.assess_write(&out, Risk::Write, format!("{action} de {url} → {}", out.display()))
+        let out = ctx
+            .guard
+            .resolve(arg_str(args, "output").unwrap_or(if action == "pdf" {
+                "pagina.pdf"
+            } else {
+                "captura.png"
+            }));
+        ctx.guard.assess_write(
+            &out,
+            Risk::Write,
+            format!("{action} de {url} → {}", out.display()),
+        )
     }
     async fn call(&self, args: Value, ctx: &ToolContext) -> Result<ToolOutput> {
         let url = check_url(arg_str(&args, "url").unwrap_or(""), &ctx.cfg).await?;
-        let chrome = find_chromium(&ctx.cfg).context("Chromium não encontrado (sudo apt install chromium, ou web.chromium na config)")?;
+        let chrome = find_chromium(&ctx.cfg).context(
+            "Chromium não encontrado (sudo apt install chromium, ou web.chromium na config)",
+        )?;
         let action = arg_str(&args, "action").unwrap_or("text");
         let profile = tempfile::tempdir()?;
         let w = arg_u64(&args, "width").unwrap_or(1280);
@@ -348,8 +460,14 @@ impl Tool for Browser {
             a.push("--no-sandbox".into()); // Chromium refuses to run as root otherwise.
         }
         let out_path = match action {
-            "screenshot" => Some(ctx.guard.resolve(arg_str(&args, "output").unwrap_or("captura.png"))),
-            "pdf" => Some(ctx.guard.resolve(arg_str(&args, "output").unwrap_or("pagina.pdf"))),
+            "screenshot" => Some(
+                ctx.guard
+                    .resolve(arg_str(&args, "output").unwrap_or("captura.png")),
+            ),
+            "pdf" => Some(
+                ctx.guard
+                    .resolve(arg_str(&args, "output").unwrap_or("pagina.pdf")),
+            ),
             _ => None,
         };
         match (action, &out_path) {
@@ -363,19 +481,38 @@ impl Tool for Browser {
             }
         }
         a.push(url.to_string());
-        let cmd = crate::shell::build_command(&chrome.to_string_lossy(), &a, &ctx.guard.cwd(), ctx, false);
+        let cmd = crate::shell::build_command(
+            &chrome.to_string_lossy(),
+            &a,
+            &ctx.guard.cwd(),
+            ctx,
+            false,
+        );
         let res = crate::shell::run_command(cmd, Duration::from_secs(60), ctx).await?;
         if let Some(p) = out_path {
             if !p.exists() {
-                bail!("o navegador não gerou {}: {}", p.display(), res.render(2000));
+                bail!(
+                    "o navegador não gerou {}: {}",
+                    p.display(),
+                    res.render(2000)
+                );
             }
             let size = std::fs::metadata(&p)?.len();
-            return Ok(ToolOutput::ok(format!("Gerado {} ({} bytes) a partir de {url}", p.display(), size)).with_artifact(p));
+            return Ok(ToolOutput::ok(format!(
+                "Gerado {} ({} bytes) a partir de {url}",
+                p.display(),
+                size
+            ))
+            .with_artifact(p));
         }
         if res.stdout.trim().is_empty() {
             bail!("navegador sem saída: {}", res.render(2000));
         }
         let text = html_to_text(res.stdout.as_bytes(), 120);
-        Ok(ToolOutput::ok(format!("URL: {url}\n\n{}", jarvis_core::safety::truncate_middle(&text, 20_000))).untrusted(format!("browser:{url}")))
+        Ok(ToolOutput::ok(format!(
+            "URL: {url}\n\n{}",
+            jarvis_core::safety::truncate_middle(&text, 20_000)
+        ))
+        .untrusted(format!("browser:{url}")))
     }
 }

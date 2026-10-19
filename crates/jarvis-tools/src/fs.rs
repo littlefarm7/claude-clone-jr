@@ -23,7 +23,11 @@ pub fn register(r: &mut ToolRegistry) {
 }
 
 fn spec(name: &str, desc: &str, params: Value) -> ToolSpec {
-    ToolSpec { name: name.into(), description: desc.into(), parameters: params }
+    ToolSpec {
+        name: name.into(),
+        description: desc.into(),
+        parameters: params,
+    }
 }
 
 fn path_arg(args: &Value, key: &str, ctx: &ToolContext) -> PathBuf {
@@ -69,7 +73,9 @@ impl Tool for ReadFile {
     }
     async fn call(&self, args: Value, ctx: &ToolContext) -> Result<ToolOutput> {
         let p = path_arg(&args, "path", ctx);
-        let bytes = tokio::fs::read(&p).await.with_context(|| format!("não foi possível ler {}", p.display()))?;
+        let bytes = tokio::fs::read(&p)
+            .await
+            .with_context(|| format!("não foi possível ler {}", p.display()))?;
         if is_binary(&bytes) {
             return Ok(ToolOutput::err(format!(
                 "{} parece binário ({} bytes). Use doc_read, media_info ou image_edit.",
@@ -86,7 +92,10 @@ impl Tool for ReadFile {
             out.push_str(&format!("{:>6}\t{}\n", i + 1, line));
         }
         if offset - 1 + limit < total {
-            out.push_str(&format!("[... {} linhas restantes; use offset para continuar]\n", total - (offset - 1 + limit)));
+            out.push_str(&format!(
+                "[... {} linhas restantes; use offset para continuar]\n",
+                total - (offset - 1 + limit)
+            ));
         }
         if out.is_empty() {
             out = "(arquivo vazio)".into();
@@ -112,7 +121,11 @@ impl Tool for WriteFile {
         let p = path_arg(args, "path", ctx);
         let verb = if p.exists() { "sobrescrever" } else { "criar" };
         let n = arg_str(args, "content").map(|c| c.len()).unwrap_or(0);
-        ctx.guard.assess_write(&p, Risk::Write, format!("{verb} {} ({n} bytes)", p.display()))
+        ctx.guard.assess_write(
+            &p,
+            Risk::Write,
+            format!("{verb} {} ({n} bytes)", p.display()),
+        )
     }
     async fn call(&self, args: Value, ctx: &ToolContext) -> Result<ToolOutput> {
         let p = path_arg(&args, "path", ctx);
@@ -121,11 +134,16 @@ impl Tool for WriteFile {
             tokio::fs::create_dir_all(dir).await?;
         }
         let existed = p.exists();
-        tokio::fs::write(&p, content).await.with_context(|| format!("escrevendo {}", p.display()))?;
+        tokio::fs::write(&p, content)
+            .await
+            .with_context(|| format!("escrevendo {}", p.display()))?;
         let expected = hex::encode(Sha256::digest(content.as_bytes()));
         let actual = sha256_file(&p)?;
         if expected != actual {
-            bail!("verificação falhou: o conteúdo gravado em {} difere do esperado", p.display());
+            bail!(
+                "verificação falhou: o conteúdo gravado em {} difere do esperado",
+                p.display()
+            );
         }
         Ok(ToolOutput::ok(format!(
             "{} {} ({} bytes, {} linhas). Verificado (sha256 {}).",
@@ -157,31 +175,47 @@ impl Tool for EditFile {
     }
     fn assess(&self, args: &Value, ctx: &ToolContext) -> RiskAssessment {
         let p = path_arg(args, "path", ctx);
-        ctx.guard.assess_write(&p, Risk::Write, format!("editar {}", p.display()))
+        ctx.guard
+            .assess_write(&p, Risk::Write, format!("editar {}", p.display()))
     }
     async fn call(&self, args: Value, ctx: &ToolContext) -> Result<ToolOutput> {
         let p = path_arg(&args, "path", ctx);
         let old = arg_str(&args, "old_text").unwrap_or("");
         let new = arg_str(&args, "new_text").unwrap_or("");
         if old.is_empty() {
-            return Ok(ToolOutput::err("old_text não pode ser vazio (use write_file para arquivos novos)"));
+            return Ok(ToolOutput::err(
+                "old_text não pode ser vazio (use write_file para arquivos novos)",
+            ));
         }
-        let text = tokio::fs::read_to_string(&p).await.with_context(|| format!("lendo {}", p.display()))?;
+        let text = tokio::fs::read_to_string(&p)
+            .await
+            .with_context(|| format!("lendo {}", p.display()))?;
         let count = text.matches(old).count();
         let all = arg_bool(&args, "replace_all").unwrap_or(false);
         if count == 0 {
             return Ok(ToolOutput::err("old_text não encontrado. Leia o arquivo de novo e copie o trecho exato (incluindo espaços)."));
         }
         if count > 1 && !all {
-            return Ok(ToolOutput::err(format!("old_text aparece {count} vezes; inclua mais contexto ou use replace_all=true")));
+            return Ok(ToolOutput::err(format!(
+                "old_text aparece {count} vezes; inclua mais contexto ou use replace_all=true"
+            )));
         }
-        let updated = if all { text.replace(old, new) } else { text.replacen(old, new, 1) };
+        let updated = if all {
+            text.replace(old, new)
+        } else {
+            text.replacen(old, new, 1)
+        };
         tokio::fs::write(&p, &updated).await?;
         let check = tokio::fs::read_to_string(&p).await?;
         if check != updated || (!new.is_empty() && !check.contains(new)) {
             bail!("verificação falhou após editar {}", p.display());
         }
-        Ok(ToolOutput::ok(format!("Editado {} ({} substituição(ões)). Verificado.", p.display(), if all { count } else { 1 })).with_artifact(p))
+        Ok(ToolOutput::ok(format!(
+            "Editado {} ({} substituição(ões)). Verificado.",
+            p.display(),
+            if all { count } else { 1 }
+        ))
+        .with_artifact(p))
     }
 }
 
@@ -206,7 +240,9 @@ impl Tool for ListDir {
         let p = path_arg(&args, "path", ctx);
         let hidden = arg_bool(&args, "hidden").unwrap_or(false);
         let mut entries = Vec::new();
-        let mut rd = tokio::fs::read_dir(&p).await.with_context(|| format!("listando {}", p.display()))?;
+        let mut rd = tokio::fs::read_dir(&p)
+            .await
+            .with_context(|| format!("listando {}", p.display()))?;
         while let Some(e) = rd.next_entry().await? {
             let name = e.file_name().to_string_lossy().to_string();
             if !hidden && name.starts_with('.') {
@@ -226,7 +262,15 @@ impl Tool for ListDir {
             entries.truncate(1000);
             entries.push(format!("[... {} entradas omitidas]", n - 1000));
         }
-        Ok(ToolOutput::ok(format!("{}:\n{}", p.display(), if entries.is_empty() { "(vazio)".into() } else { entries.join("\n") })))
+        Ok(ToolOutput::ok(format!(
+            "{}:\n{}",
+            p.display(),
+            if entries.is_empty() {
+                "(vazio)".into()
+            } else {
+                entries.join("\n")
+            }
+        )))
     }
 }
 
@@ -260,18 +304,34 @@ impl Tool for Glob {
     }
     fn assess(&self, args: &Value, ctx: &ToolContext) -> RiskAssessment {
         let p = path_arg(args, "path", ctx);
-        ctx.guard.assess_read(&p, format!("procurar {} em {}", arg_str(args, "pattern").unwrap_or(""), p.display()))
+        ctx.guard.assess_read(
+            &p,
+            format!(
+                "procurar {} em {}",
+                arg_str(args, "pattern").unwrap_or(""),
+                p.display()
+            ),
+        )
     }
     async fn call(&self, args: Value, ctx: &ToolContext) -> Result<ToolOutput> {
         let root = path_arg(&args, "path", ctx);
         let pattern = arg_str(&args, "pattern").unwrap_or("*").to_string();
         let res = tokio::task::spawn_blocking(move || -> Result<Vec<String>> {
-            let matcher = globset::GlobBuilder::new(&pattern).literal_separator(false).build()?.compile_matcher();
+            let matcher = globset::GlobBuilder::new(&pattern)
+                .literal_separator(false)
+                .build()?
+                .compile_matcher();
             let mut out = Vec::new();
-            for e in ignore::WalkBuilder::new(&root).hidden(true).build().flatten() {
+            for e in ignore::WalkBuilder::new(&root)
+                .hidden(true)
+                .build()
+                .flatten()
+            {
                 let path = e.path();
                 let rel = path.strip_prefix(&root).unwrap_or(path);
-                if e.file_type().map(|t| t.is_file()).unwrap_or(false) && (matcher.is_match(rel) || matcher.is_match(path)) {
+                if e.file_type().map(|t| t.is_file()).unwrap_or(false)
+                    && (matcher.is_match(rel) || matcher.is_match(path))
+                {
                     out.push(path.display().to_string());
                     if out.len() >= 1000 {
                         break;
@@ -281,7 +341,11 @@ impl Tool for Glob {
             Ok(out)
         })
         .await??;
-        Ok(ToolOutput::ok(if res.is_empty() { "Nenhum arquivo encontrado.".into() } else { format!("{} arquivo(s):\n{}", res.len(), res.join("\n")) }))
+        Ok(ToolOutput::ok(if res.is_empty() {
+            "Nenhum arquivo encontrado.".into()
+        } else {
+            format!("{} arquivo(s):\n{}", res.len(), res.join("\n"))
+        }))
     }
 }
 
@@ -304,7 +368,14 @@ impl Tool for Grep {
     }
     fn assess(&self, args: &Value, ctx: &ToolContext) -> RiskAssessment {
         let p = path_arg(args, "path", ctx);
-        ctx.guard.assess_read(&p, format!("pesquisar '{}' em {}", arg_str(args, "pattern").unwrap_or(""), p.display()))
+        ctx.guard.assess_read(
+            &p,
+            format!(
+                "pesquisar '{}' em {}",
+                arg_str(args, "pattern").unwrap_or(""),
+                p.display()
+            ),
+        )
     }
     async fn call(&self, args: Value, ctx: &ToolContext) -> Result<ToolOutput> {
         let root = path_arg(&args, "path", ctx);
@@ -332,7 +403,9 @@ impl Tool for Grep {
                         continue;
                     }
                 }
-                let Ok(bytes) = std::fs::read(path) else { continue };
+                let Ok(bytes) = std::fs::read(path) else {
+                    continue;
+                };
                 if is_binary(&bytes) {
                     continue;
                 }
@@ -350,7 +423,11 @@ impl Tool for Grep {
             out
         })
         .await?;
-        Ok(ToolOutput::ok(if res.is_empty() { "Nenhuma ocorrência.".into() } else { format!("{} ocorrência(s):\n{}", res.len(), res.join("\n")) }))
+        Ok(ToolOutput::ok(if res.is_empty() {
+            "Nenhuma ocorrência.".into()
+        } else {
+            format!("{} ocorrência(s):\n{}", res.len(), res.join("\n"))
+        }))
     }
 }
 
@@ -360,13 +437,22 @@ pub struct DeletePath;
 
 /// Move to the freedesktop trash so deletions are reversible.
 pub fn move_to_trash(p: &Path) -> Result<PathBuf> {
-    let home = std::env::var_os("HOME").map(PathBuf::from).context("HOME não definido")?;
-    let trash = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".local/share")).join("Trash");
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .context("HOME não definido")?;
+    let trash = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join(".local/share"))
+        .join("Trash");
     let files = trash.join("files");
     let info = trash.join("info");
     std::fs::create_dir_all(&files)?;
     std::fs::create_dir_all(&info)?;
-    let base = p.file_name().context("caminho sem nome")?.to_string_lossy().to_string();
+    let base = p
+        .file_name()
+        .context("caminho sem nome")?
+        .to_string_lossy()
+        .to_string();
     let mut name = base.clone();
     let mut i = 1;
     while files.join(&name).exists() || info.join(format!("{name}.trashinfo")).exists() {
@@ -385,7 +471,11 @@ pub fn move_to_trash(p: &Path) -> Result<PathBuf> {
     }
     std::fs::write(
         info.join(format!("{name}.trashinfo")),
-        format!("[Trash Info]\nPath={}\nDeletionDate={}\n", p.display(), chrono::Local::now().format("%Y-%m-%dT%H:%M:%S")),
+        format!(
+            "[Trash Info]\nPath={}\nDeletionDate={}\n",
+            p.display(),
+            chrono::Local::now().format("%Y-%m-%dT%H:%M:%S")
+        ),
     )?;
     Ok(dest)
 }
@@ -414,7 +504,11 @@ impl Tool for DeletePath {
     }
     fn assess(&self, args: &Value, ctx: &ToolContext) -> RiskAssessment {
         let p = path_arg(args, "path", ctx);
-        let ra = ctx.guard.assess_write(&p, Risk::Destructive, format!("mover para a lixeira: {}", p.display()));
+        let ra = ctx.guard.assess_write(
+            &p,
+            Risk::Destructive,
+            format!("mover para a lixeira: {}", p.display()),
+        );
         if ctx.guard.workspace.iter().any(|w| w == &p) {
             return ra.deny("não é permitido apagar a raiz do workspace");
         }
@@ -429,7 +523,11 @@ impl Tool for DeletePath {
         if p.exists() {
             bail!("verificação falhou: {} ainda existe", p.display());
         }
-        Ok(ToolOutput::ok(format!("{} movido para a lixeira ({}).", p.display(), dest.display())))
+        Ok(ToolOutput::ok(format!(
+            "{} movido para a lixeira ({}).",
+            p.display(),
+            dest.display()
+        )))
     }
 }
 
@@ -450,12 +548,27 @@ impl Tool for MovePath {
         let from = path_arg(args, "from", ctx);
         let to = path_arg(args, "to", ctx);
         let copy = arg_bool(args, "copy").unwrap_or(false);
-        let risk = if to.exists() { Risk::Destructive } else { Risk::Write };
-        let summary = format!("{} {} → {}{}", if copy { "copiar" } else { "mover" }, from.display(), to.display(), if to.exists() { " (sobrescreve)" } else { "" });
-        let src = if copy { ctx.guard.assess_read(&from, summary.clone()) } else { ctx.guard.assess_write(&from, risk, summary.clone()) };
+        let risk = if to.exists() {
+            Risk::Destructive
+        } else {
+            Risk::Write
+        };
+        let summary = format!(
+            "{} {} → {}{}",
+            if copy { "copiar" } else { "mover" },
+            from.display(),
+            to.display(),
+            if to.exists() { " (sobrescreve)" } else { "" }
+        );
+        let src = if copy {
+            ctx.guard.assess_read(&from, summary.clone())
+        } else {
+            ctx.guard.assess_write(&from, risk, summary.clone())
+        };
         let dst = ctx.guard.assess_write(&to, risk, summary);
         match (src.force, dst.force) {
-            (Some(jarvis_core::permissions::Forced::Deny(r)), _) | (_, Some(jarvis_core::permissions::Forced::Deny(r))) => dst_with(risk, r, true),
+            (Some(jarvis_core::permissions::Forced::Deny(r)), _)
+            | (_, Some(jarvis_core::permissions::Forced::Deny(r))) => dst_with(risk, r, true),
             (Some(jarvis_core::permissions::Forced::Ask(r)), _) => dst_with(risk, r, false),
             _ => RiskAssessment::new(risk, dst.summary),
         }
@@ -479,7 +592,10 @@ impl Tool for MovePath {
         if !to.exists() {
             bail!("verificação falhou: {} não existe", to.display());
         }
-        Ok(ToolOutput::ok(format!("Feito: {} → {}", from.display(), to.display())).with_artifact(to))
+        Ok(
+            ToolOutput::ok(format!("Feito: {} → {}", from.display(), to.display()))
+                .with_artifact(to),
+        )
     }
 }
 

@@ -16,7 +16,11 @@ pub struct EmbeddingClient {
 impl EmbeddingClient {
     pub fn new(cfg: ModelConfig) -> Self {
         let key = cfg.resolve_api_key();
-        Self { cfg, key, client: http::client(Duration::from_secs(120)) }
+        Self {
+            cfg,
+            key,
+            client: http::client(Duration::from_secs(120)),
+        }
     }
 
     pub fn id(&self) -> String {
@@ -29,11 +33,29 @@ impl EmbeddingClient {
         if let Some(k) = &self.key {
             headers.push(("authorization", format!("Bearer {k}")));
         }
-        let v = http::post_json(&self.client, &url, &headers, &json!({"model": self.cfg.model, "input": texts})).await?;
-        let data = v["data"].as_array().ok_or_else(|| anyhow!("resposta de embeddings inválida"))?;
+        let v = http::post_json(
+            &self.client,
+            &url,
+            &headers,
+            &json!({"model": self.cfg.model, "input": texts}),
+        )
+        .await?;
+        let data = v["data"]
+            .as_array()
+            .ok_or_else(|| anyhow!("resposta de embeddings inválida"))?;
         Ok(data
             .iter()
-            .map(|d| d["embedding"].as_array().map(|a| a.iter().filter_map(|x| x.as_f64()).map(|x| x as f32).collect()).unwrap_or_default())
+            .map(|d| {
+                d["embedding"]
+                    .as_array()
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|x| x.as_f64())
+                            .map(|x| x as f32)
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            })
             .collect())
     }
 }

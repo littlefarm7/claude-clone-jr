@@ -86,7 +86,9 @@ impl ModelConfig {
     }
 
     pub fn base_url(&self) -> String {
-        self.base_url.clone().unwrap_or_else(|| self.default_base_url())
+        self.base_url
+            .clone()
+            .unwrap_or_else(|| self.default_base_url())
     }
 
     pub fn default_key_env(&self) -> Option<&'static str> {
@@ -131,17 +133,26 @@ pub fn build_provider(cfg: &ModelConfig) -> Result<Arc<dyn Provider>> {
         ProviderKind::OpenaiCompat => Arc::new(openai::OpenAiCompat::new(cfg.clone(), key)),
         ProviderKind::Openai => {
             if key.is_none() {
-                bail!("modelo '{}': defina OPENAI_API_KEY (ou api_key_env)", cfg.name);
+                bail!(
+                    "modelo '{}': defina OPENAI_API_KEY (ou api_key_env)",
+                    cfg.name
+                );
             }
             Arc::new(openai::OpenAiCompat::new(cfg.clone(), key))
         }
         ProviderKind::Anthropic => match key {
             Some(k) => Arc::new(anthropic::Anthropic::new(cfg.clone(), k)),
-            None => bail!("modelo '{}': defina ANTHROPIC_API_KEY (ou api_key_env)", cfg.name),
+            None => bail!(
+                "modelo '{}': defina ANTHROPIC_API_KEY (ou api_key_env)",
+                cfg.name
+            ),
         },
         ProviderKind::Gemini => match key {
             Some(k) => Arc::new(gemini::Gemini::new(cfg.clone(), k)),
-            None => bail!("modelo '{}': defina GEMINI_API_KEY (ou api_key_env)", cfg.name),
+            None => bail!(
+                "modelo '{}': defina GEMINI_API_KEY (ou api_key_env)",
+                cfg.name
+            ),
         },
     })
 }

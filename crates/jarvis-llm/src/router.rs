@@ -35,13 +35,38 @@ impl TaskProfile {
 pub fn classify_task(task: &str) -> TaskProfile {
     let t = task.to_lowercase();
     let has = |ws: &[&str]| ws.iter().any(|w| t.contains(w));
-    if has(&["imagem", "image", "foto", "photo", "screenshot", "captura de tela"]) {
+    if has(&[
+        "imagem",
+        "image",
+        "foto",
+        "photo",
+        "screenshot",
+        "captura de tela",
+    ]) {
         TaskProfile::Vision
-    } else if task.len() > 4000 || has(&["resuma o documento", "summarize the document", "livro", "relatório longo"]) {
+    } else if task.len() > 4000
+        || has(&[
+            "resuma o documento",
+            "summarize the document",
+            "livro",
+            "relatório longo",
+        ])
+    {
         TaskProfile::Long
-    } else if has(&["código", "codigo", "code", "rust", "python", "compile", "compilar", "bug", "teste", "refator", "função", "function"]) {
+    } else if has(&[
+        "código", "codigo", "code", "rust", "python", "compile", "compilar", "bug", "teste",
+        "refator", "função", "function",
+    ]) {
         TaskProfile::Code
-    } else if has(&["planeje", "analise", "analyze", "pesquise", "research", "compare", "estratégia"]) {
+    } else if has(&[
+        "planeje",
+        "analise",
+        "analyze",
+        "pesquise",
+        "research",
+        "compare",
+        "estratégia",
+    ]) {
         TaskProfile::Smart
     } else if task.len() < 80 {
         TaskProfile::Fast
@@ -59,12 +84,19 @@ pub struct Resources {
 
 pub fn detect_resources() -> Resources {
     let mut r = Resources {
-        cpu_threads: std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1),
+        cpu_threads: std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1),
         ..Default::default()
     };
     if let Ok(s) = std::fs::read_to_string("/proc/meminfo") {
         for line in s.lines() {
-            let kb = |l: &str| l.split_whitespace().nth(1).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
+            let kb = |l: &str| {
+                l.split_whitespace()
+                    .nth(1)
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .unwrap_or(0)
+            };
             if line.starts_with("MemAvailable:") {
                 r.mem_available_mb = kb(line) / 1024;
             } else if line.starts_with("MemTotal:") {
@@ -146,7 +178,10 @@ pub fn select<'a>(
     let mut best: Option<(&ModelConfig, i32, String)> = None;
     let mut skipped = Vec::new();
     for m in models {
-        let avail = availability.get(&m.name).cloned().unwrap_or(Availability::Ready);
+        let avail = availability
+            .get(&m.name)
+            .cloned()
+            .unwrap_or(Availability::Ready);
         if let Availability::Unavailable(why) = &avail {
             skipped.push(format!("{}: {why}", m.name));
             continue;
@@ -176,7 +211,14 @@ pub fn select<'a>(
         }
     }
     match best {
-        Some((m, _, why)) => Ok((m, if why.is_empty() { "primeiro disponível".into() } else { why })),
+        Some((m, _, why)) => Ok((
+            m,
+            if why.is_empty() {
+                "primeiro disponível".into()
+            } else {
+                why
+            },
+        )),
         None => bail!("nenhum modelo disponível ({})", skipped.join("; ")),
     }
 }
@@ -204,7 +246,10 @@ mod tests {
 
     #[test]
     fn classify() {
-        assert_eq!(classify_task("corrija o bug no código rust"), TaskProfile::Code);
+        assert_eq!(
+            classify_task("corrija o bug no código rust"),
+            TaskProfile::Code
+        );
         assert_eq!(classify_task("oi"), TaskProfile::Fast);
         assert_eq!(classify_task("descreva esta imagem"), TaskProfile::Vision);
     }
@@ -216,11 +261,21 @@ mod tests {
             m("claude", ProviderKind::Anthropic, &["code", "smart"]),
         ];
         let res = Resources::default();
-        let avail: HashMap<_, _> = models.iter().map(|c| (c.name.clone(), static_availability(c, &res))).collect();
-        let opts = RouterOptions { prefer_local: true, ..Default::default() };
+        let avail: HashMap<_, _> = models
+            .iter()
+            .map(|c| (c.name.clone(), static_availability(c, &res)))
+            .collect();
+        let opts = RouterOptions {
+            prefer_local: true,
+            ..Default::default()
+        };
         let (c, _) = select(&models, TaskProfile::Code, &opts, &avail).unwrap();
         assert_eq!(c.name, "local"); // claude has no key -> unavailable
-        let opts = RouterOptions { explicit: Some("claude".into()), local_only: true, ..Default::default() };
+        let opts = RouterOptions {
+            explicit: Some("claude".into()),
+            local_only: true,
+            ..Default::default()
+        };
         assert!(select(&models, TaskProfile::Code, &opts, &avail).is_err());
     }
 
@@ -232,9 +287,18 @@ mod tests {
         std::fs::write(&f, vec![0u8; 2 * 1024 * 1024]).unwrap();
         let mut c = m("l", ProviderKind::OpenaiCompat, &[]);
         c.gguf_path = Some(f.to_string_lossy().into());
-        let small = Resources { mem_available_mb: 100, ..Default::default() };
-        assert!(matches!(static_availability(&c, &small), Availability::Unavailable(_)));
-        let big = Resources { mem_available_mb: 100_000, ..Default::default() };
+        let small = Resources {
+            mem_available_mb: 100,
+            ..Default::default()
+        };
+        assert!(matches!(
+            static_availability(&c, &small),
+            Availability::Unavailable(_)
+        ));
+        let big = Resources {
+            mem_available_mb: 100_000,
+            ..Default::default()
+        };
         assert_eq!(static_availability(&c, &big), Availability::Startable);
     }
 }

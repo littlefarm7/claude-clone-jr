@@ -29,10 +29,17 @@ pub struct ToolOutput {
 
 impl ToolOutput {
     pub fn ok(content: impl Into<String>) -> Self {
-        Self { content: content.into(), ..Default::default() }
+        Self {
+            content: content.into(),
+            ..Default::default()
+        }
     }
     pub fn err(content: impl Into<String>) -> Self {
-        Self { content: content.into(), is_error: true, ..Default::default() }
+        Self {
+            content: content.into(),
+            is_error: true,
+            ..Default::default()
+        }
     }
     pub fn untrusted(mut self, source: impl Into<String>) -> Self {
         self.untrusted_source = Some(source.into());
@@ -47,7 +54,13 @@ impl ToolOutput {
 /// Runs a child agent (implemented by the agent itself).
 #[async_trait]
 pub trait SubagentRunner: Send + Sync {
-    async fn run_subagent(&self, parent_session: &str, task: &str, tools: Vec<String>, cancel: CancellationToken) -> Result<String>;
+    async fn run_subagent(
+        &self,
+        parent_session: &str,
+        task: &str,
+        tools: Vec<String>,
+        cancel: CancellationToken,
+    ) -> Result<String>;
 }
 
 #[derive(Clone)]
@@ -162,7 +175,10 @@ pub fn arg_str<'a>(args: &'a Value, key: &str) -> Option<&'a str> {
 }
 
 pub fn arg_u64(args: &Value, key: &str) -> Option<u64> {
-    args.get(key).and_then(|v| v.as_u64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
+    args.get(key).and_then(|v| {
+        v.as_u64()
+            .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+    })
 }
 
 pub fn arg_bool(args: &Value, key: &str) -> Option<bool> {

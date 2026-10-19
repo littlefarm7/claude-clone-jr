@@ -15,13 +15,15 @@ async fn serve(path: &str, reply: Value) -> (String, Seen) {
     let app = Router::new()
         .route(
             path,
-            post(move |State(seen): State<Seen>, headers: HeaderMap, Json(body): Json<Value>| {
-                let reply = reply.clone();
-                async move {
-                    seen.lock().unwrap().push((headers, body));
-                    Json(reply)
-                }
-            }),
+            post(
+                move |State(seen): State<Seen>, headers: HeaderMap, Json(body): Json<Value>| {
+                    let reply = reply.clone();
+                    async move {
+                        seen.lock().unwrap().push((headers, body));
+                        Json(reply)
+                    }
+                },
+            ),
         )
         .with_state(s2);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -89,7 +91,9 @@ async fn gemini_roundtrip() {
     let (h, body) = seen.lock().unwrap()[0].clone();
     assert_eq!(h["x-goog-api-key"], "sk-test");
     assert_eq!(body["systemInstruction"]["parts"][0]["text"], "be brief");
-    assert!(body["tools"][0]["functionDeclarations"][0]["parameters"].get("additionalProperties").is_none());
+    assert!(body["tools"][0]["functionDeclarations"][0]["parameters"]
+        .get("additionalProperties")
+        .is_none());
 }
 
 #[tokio::test]

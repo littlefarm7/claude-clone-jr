@@ -31,7 +31,10 @@ impl Risk {
     }
 
     pub fn changes_state(&self) -> bool {
-        matches!(self, Risk::Write | Risk::Execute | Risk::Destructive | Risk::Admin)
+        matches!(
+            self,
+            Risk::Write | Risk::Execute | Risk::Destructive | Risk::Admin
+        )
     }
 }
 
@@ -70,7 +73,11 @@ pub enum Forced {
 
 impl RiskAssessment {
     pub fn new(risk: Risk, summary: impl Into<String>) -> Self {
-        Self { risk, summary: summary.into(), force: None }
+        Self {
+            risk,
+            summary: summary.into(),
+            force: None,
+        }
     }
     pub fn deny(mut self, why: impl Into<String>) -> Self {
         self.force = Some(Forced::Deny(why.into()));
@@ -125,30 +132,46 @@ pub fn decide(
 ) -> Decision {
     let policy = cfg.tools.get(tool).copied();
     if policy == Some(ToolPolicy::Deny) {
-        return Decision::Deny { reason: format!("ferramenta '{tool}' negada na configuração") };
+        return Decision::Deny {
+            reason: format!("ferramenta '{tool}' negada na configuração"),
+        };
     }
     if let Some(Forced::Deny(r)) = &ra.force {
         return Decision::Deny { reason: r.clone() };
     }
     if ra.risk == Risk::Admin {
         if cfg.mode == Mode::Strict {
-            return Decision::Deny { reason: "ação administrativa bloqueada no modo strict".into() };
+            return Decision::Deny {
+                reason: "ação administrativa bloqueada no modo strict".into(),
+            };
         }
         // Never auto-approved and never granted for the whole session.
-        return Decision::Ask { reason: "ação administrativa (privilégios elevados)".into(), allow_session: false };
+        return Decision::Ask {
+            reason: "ação administrativa (privilégios elevados)".into(),
+            allow_session: false,
+        };
     }
-    let base_ask = |reason: String| Decision::Ask { reason, allow_session: true };
+    let base_ask = |reason: String| Decision::Ask {
+        reason,
+        allow_session: true,
+    };
     if let Some(Forced::Ask(r)) = &ra.force {
         return base_ask(r.clone());
     }
     if ra.risk == Risk::Destructive {
-        return Decision::Ask { reason: "ação destrutiva".into(), allow_session: false };
+        return Decision::Ask {
+            reason: "ação destrutiva".into(),
+            allow_session: false,
+        };
     }
     if grants.covers(tool, ra.risk, tainted) {
         return Decision::Allow;
     }
     if tainted && ra.risk != Risk::Read {
-        return base_ask("a sessão leu conteúdo externo não confiável (proteção contra injeção de prompt)".into());
+        return base_ask(
+            "a sessão leu conteúdo externo não confiável (proteção contra injeção de prompt)"
+                .into(),
+        );
     }
     if policy == Some(ToolPolicy::Allow) {
         return Decision::Allow;
@@ -187,11 +210,24 @@ pub enum PathVerdict {
 impl PathGuard {
     pub fn from_config(cfg: &PermissionsConfig) -> Self {
         let canon = |p: &PathBuf| std::fs::canonicalize(p).unwrap_or_else(|_| normalize(p));
-        let workspace: Vec<PathBuf> = cfg.workspace_roots.iter().map(|r| canon(&expand(r))).collect();
+        let workspace: Vec<PathBuf> = cfg
+            .workspace_roots
+            .iter()
+            .map(|r| canon(&expand(r)))
+            .collect();
         let read_roots = cfg.read_roots.iter().map(|r| canon(&expand(r))).collect();
         let mut blocked: Vec<PathBuf> = Vec::new();
         if let Some(home) = dirs::home_dir() {
-            for p in [".ssh", ".gnupg", ".password-store", ".local/share/keyrings", ".aws", ".netrc", ".docker/config.json", ".kube"] {
+            for p in [
+                ".ssh",
+                ".gnupg",
+                ".password-store",
+                ".local/share/keyrings",
+                ".aws",
+                ".netrc",
+                ".docker/config.json",
+                ".kube",
+            ] {
                 blocked.push(home.join(p));
             }
         }
@@ -202,12 +238,19 @@ impl PathGuard {
             blocked.push(PathBuf::from(p));
         }
         blocked.extend(cfg.blocked_paths.iter().map(|p| expand(p)));
-        Self { workspace, read_roots, blocked }
+        Self {
+            workspace,
+            read_roots,
+            blocked,
+        }
     }
 
     /// Main working directory (first workspace root).
     pub fn cwd(&self) -> PathBuf {
-        self.workspace.first().cloned().unwrap_or_else(|| PathBuf::from("."))
+        self.workspace
+            .first()
+            .cloned()
+            .unwrap_or_else(|| PathBuf::from("."))
     }
 
     /// Resolve a user/model-supplied path to an absolute, canonical path.
@@ -215,7 +258,11 @@ impl PathGuard {
     /// longest existing ancestor, so symlinks cannot escape.
     pub fn resolve(&self, input: &str) -> PathBuf {
         let p = expand(input);
-        let abs = if p.is_absolute() { p } else { self.cwd().join(p) };
+        let abs = if p.is_absolute() {
+            p
+        } else {
+            self.cwd().join(p)
+        };
         let abs = normalize(&abs);
         let mut existing = abs.clone();
         let mut tail = Vec::new();
@@ -238,14 +285,24 @@ impl PathGuard {
     pub fn classify(&self, path: &Path) -> PathVerdict {
         for b in &self.blocked {
             if path.starts_with(b) {
-                return PathVerdict::Blocked(format!("caminho sensível bloqueado: {}", b.display()));
+                return PathVerdict::Blocked(format!(
+                    "caminho sensível bloqueado: {}",
+                    b.display()
+                ));
             }
         }
-        let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
         if self.workspace.iter().any(|w| path.starts_with(w)) {
             return PathVerdict::Inside;
         }
-        if name == ".env" || name.ends_with(".pem") || name.starts_with("id_rsa") || name.starts_with("id_ed25519") {
+        if name == ".env"
+            || name.ends_with(".pem")
+            || name.starts_with("id_rsa")
+            || name.starts_with("id_ed25519")
+        {
             return PathVerdict::Blocked("arquivo de credenciais fora do workspace".into());
         }
         if self.read_roots.iter().any(|w| path.starts_with(w)) {
@@ -259,7 +316,9 @@ impl PathGuard {
         let ra = RiskAssessment::new(Risk::Read, summary);
         match self.classify(path) {
             PathVerdict::Inside | PathVerdict::ReadableOutside => ra,
-            PathVerdict::Outside => ra.ask(format!("leitura fora do workspace: {}", path.display())),
+            PathVerdict::Outside => {
+                ra.ask(format!("leitura fora do workspace: {}", path.display()))
+            }
             PathVerdict::Blocked(r) => ra.deny(r),
         }
     }
@@ -298,7 +357,10 @@ mod tests {
     use super::*;
 
     fn cfg(mode: Mode) -> PermissionsConfig {
-        PermissionsConfig { mode, ..Default::default() }
+        PermissionsConfig {
+            mode,
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -307,15 +369,42 @@ mod tests {
         let c = cfg(Mode::Ask);
         let ra = |r| RiskAssessment::new(r, "x");
         assert_eq!(decide(&c, "t", &ra(Risk::Read), false, &g), Decision::Allow);
-        assert_eq!(decide(&c, "t", &ra(Risk::Network), false, &g), Decision::Allow);
-        assert!(matches!(decide(&c, "t", &ra(Risk::Network), true, &g), Decision::Ask { .. }));
-        assert!(matches!(decide(&c, "t", &ra(Risk::Write), false, &g), Decision::Ask { .. }));
-        assert!(matches!(decide(&c, "t", &ra(Risk::Admin), false, &g), Decision::Ask { allow_session: false, .. }));
+        assert_eq!(
+            decide(&c, "t", &ra(Risk::Network), false, &g),
+            Decision::Allow
+        );
+        assert!(matches!(
+            decide(&c, "t", &ra(Risk::Network), true, &g),
+            Decision::Ask { .. }
+        ));
+        assert!(matches!(
+            decide(&c, "t", &ra(Risk::Write), false, &g),
+            Decision::Ask { .. }
+        ));
+        assert!(matches!(
+            decide(&c, "t", &ra(Risk::Admin), false, &g),
+            Decision::Ask {
+                allow_session: false,
+                ..
+            }
+        ));
         let auto = cfg(Mode::AutoSafe);
-        assert_eq!(decide(&auto, "t", &ra(Risk::Write), false, &g), Decision::Allow);
-        assert!(matches!(decide(&auto, "t", &ra(Risk::Write), true, &g), Decision::Ask { .. }));
-        assert!(matches!(decide(&auto, "t", &ra(Risk::Execute), false, &g), Decision::Ask { .. }));
-        assert!(matches!(decide(&cfg(Mode::Strict), "t", &ra(Risk::Admin), false, &g), Decision::Deny { .. }));
+        assert_eq!(
+            decide(&auto, "t", &ra(Risk::Write), false, &g),
+            Decision::Allow
+        );
+        assert!(matches!(
+            decide(&auto, "t", &ra(Risk::Write), true, &g),
+            Decision::Ask { .. }
+        ));
+        assert!(matches!(
+            decide(&auto, "t", &ra(Risk::Execute), false, &g),
+            Decision::Ask { .. }
+        ));
+        assert!(matches!(
+            decide(&cfg(Mode::Strict), "t", &ra(Risk::Admin), false, &g),
+            Decision::Deny { .. }
+        ));
     }
 
     #[test]
@@ -323,19 +412,28 @@ mod tests {
         let mut c = cfg(Mode::Ask);
         c.tools.insert("shell".into(), ToolPolicy::Deny);
         let ra = RiskAssessment::new(Risk::Read, "x");
-        assert!(matches!(decide(&c, "shell", &ra, false, &SessionGrants::default()), Decision::Deny { .. }));
+        assert!(matches!(
+            decide(&c, "shell", &ra, false, &SessionGrants::default()),
+            Decision::Deny { .. }
+        ));
         let mut g = SessionGrants::default();
         g.grant("write_file", Risk::Write, false);
         let w = RiskAssessment::new(Risk::Write, "x");
         assert_eq!(decide(&c, "write_file", &w, false, &g), Decision::Allow);
         // A clean grant does not survive taint; a grant made while tainted does.
-        assert!(matches!(decide(&c, "write_file", &w, true, &g), Decision::Ask { .. }));
+        assert!(matches!(
+            decide(&c, "write_file", &w, true, &g),
+            Decision::Ask { .. }
+        ));
         g.grant("write_file", Risk::Write, true);
         assert_eq!(decide(&c, "write_file", &w, true, &g), Decision::Allow);
         // Admin is never covered by a session grant.
         g.grant("shell2", Risk::Admin, false);
         let a = RiskAssessment::new(Risk::Admin, "x");
-        assert!(matches!(decide(&c, "shell2", &a, false, &g), Decision::Ask { .. }));
+        assert!(matches!(
+            decide(&c, "shell2", &a, false, &g),
+            Decision::Ask { .. }
+        ));
     }
 
     #[test]
@@ -343,7 +441,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = dir.path().join("ws");
         std::fs::create_dir_all(&ws).unwrap();
-        let c = PermissionsConfig { workspace_roots: vec![ws.to_string_lossy().into()], ..Default::default() };
+        let c = PermissionsConfig {
+            workspace_roots: vec![ws.to_string_lossy().into()],
+            ..Default::default()
+        };
         let g = PathGuard::from_config(&c);
         let inside = g.resolve("sub/new.txt");
         assert_eq!(g.classify(&inside), PathVerdict::Inside);
@@ -358,6 +459,9 @@ mod tests {
         }
         let ssh = g.resolve("~/.ssh/id_rsa");
         assert!(matches!(g.classify(&ssh), PathVerdict::Blocked(_)));
-        assert!(matches!(g.assess_write(&esc, Risk::Write, "w".into()).force, Some(Forced::Deny(_))));
+        assert!(matches!(
+            g.assess_write(&esc, Risk::Write, "w".into()).force,
+            Some(Forced::Deny(_))
+        ));
     }
 }

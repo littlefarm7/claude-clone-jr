@@ -43,9 +43,16 @@ impl Tool for MemorySave {
     async fn call(&self, args: Value, ctx: &ToolContext) -> Result<ToolOutput> {
         let id = ctx
             .memory
-            .save(arg_str(&args, "kind").unwrap_or("note"), arg_str(&args, "content").unwrap_or(""), arg_str(&args, "tags").unwrap_or(""), &format!("session:{}", ctx.session_id))
+            .save(
+                arg_str(&args, "kind").unwrap_or("note"),
+                arg_str(&args, "content").unwrap_or(""),
+                arg_str(&args, "tags").unwrap_or(""),
+                &format!("session:{}", ctx.session_id),
+            )
             .await?;
-        Ok(ToolOutput::ok(format!("Memória #{id} salva. O usuário pode removê-la com `jarvis memory delete {id}`.")))
+        Ok(ToolOutput::ok(format!(
+            "Memória #{id} salva. O usuário pode removê-la com `jarvis memory delete {id}`."
+        )))
     }
 }
 
@@ -56,7 +63,8 @@ impl Tool for MemorySearch {
     fn spec(&self) -> ToolSpec {
         ToolSpec {
             name: "memory_search".into(),
-            description: "Pesquisa nas memórias do usuário (busca híbrida: texto + vetores).".into(),
+            description: "Pesquisa nas memórias do usuário (busca híbrida: texto + vetores)."
+                .into(),
             parameters: json!({"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer"}},"required":["query"]}),
         }
     }
@@ -64,12 +72,34 @@ impl Tool for MemorySearch {
         RiskAssessment::new(Risk::Read, "pesquisar memórias")
     }
     async fn call(&self, args: Value, ctx: &ToolContext) -> Result<ToolOutput> {
-        let hits = ctx.memory.search(arg_str(&args, "query").unwrap_or(""), arg_u64(&args, "limit").unwrap_or(8) as usize).await?;
+        let hits = ctx
+            .memory
+            .search(
+                arg_str(&args, "query").unwrap_or(""),
+                arg_u64(&args, "limit").unwrap_or(8) as usize,
+            )
+            .await?;
         if hits.is_empty() {
             return Ok(ToolOutput::ok("Nenhuma memória relevante."));
         }
         Ok(ToolOutput::ok(
-            hits.iter().map(|h| format!("#{} [{}] ({:.2}) {} {}", h.record.id, h.record.kind, h.score, h.record.content, if h.record.tags.is_empty() { String::new() } else { format!("[{}]", h.record.tags) })).collect::<Vec<_>>().join("\n"),
+            hits.iter()
+                .map(|h| {
+                    format!(
+                        "#{} [{}] ({:.2}) {} {}",
+                        h.record.id,
+                        h.record.kind,
+                        h.score,
+                        h.record.content,
+                        if h.record.tags.is_empty() {
+                            String::new()
+                        } else {
+                            format!("[{}]", h.record.tags)
+                        }
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
         ))
     }
 }
@@ -89,10 +119,18 @@ impl Tool for HistorySearch {
         RiskAssessment::new(Risk::Read, "pesquisar histórico")
     }
     async fn call(&self, args: Value, ctx: &ToolContext) -> Result<ToolOutput> {
-        let rows = ctx.store.search_history(arg_str(&args, "query").unwrap_or(""), arg_u64(&args, "limit").unwrap_or(10) as usize)?;
+        let rows = ctx.store.search_history(
+            arg_str(&args, "query").unwrap_or(""),
+            arg_u64(&args, "limit").unwrap_or(10) as usize,
+        )?;
         if rows.is_empty() {
             return Ok(ToolOutput::ok("Nada encontrado no histórico."));
         }
-        Ok(ToolOutput::ok(rows.iter().map(|(s, snip)| format!("[{}] {}", &s[..8.min(s.len())], snip)).collect::<Vec<_>>().join("\n")))
+        Ok(ToolOutput::ok(
+            rows.iter()
+                .map(|(s, snip)| format!("[{}] {}", &s[..8.min(s.len())], snip))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        ))
     }
 }

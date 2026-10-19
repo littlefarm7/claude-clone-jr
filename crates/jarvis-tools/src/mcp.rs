@@ -41,7 +41,9 @@ impl McpClient {
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .kill_on_drop(true);
-        let mut child = cmd.spawn().with_context(|| format!("iniciando {}", cfg.command))?;
+        let mut child = cmd
+            .spawn()
+            .with_context(|| format!("iniciando {}", cfg.command))?;
         let stdin = child.stdin.take().unwrap();
         let stdout = child.stdout.take().unwrap();
         let pending: Pending = Arc::default();
@@ -50,7 +52,9 @@ impl McpClient {
         tokio::spawn(async move {
             let mut lines = BufReader::new(stdout).lines();
             while let Ok(Some(line)) = lines.next_line().await {
-                let Ok(v) = serde_json::from_str::<Value>(&line) else { continue };
+                let Ok(v) = serde_json::from_str::<Value>(&line) else {
+                    continue;
+                };
                 if v.get("method").is_some() {
                     if v.get("id").is_some() {
                         let _ = req_tx.send(v); // server -> client request
@@ -79,8 +83,13 @@ impl McpClient {
                     json!({"protocolVersion": PROTOCOL_VERSION, "capabilities": {}, "clientInfo": {"name": "jarvis-core", "version": env!("CARGO_PKG_VERSION")}}),
                 )
                 .await?;
-            client.notify("notifications/initialized", json!({})).await?;
-            Self { server_info: init, ..client }
+            client
+                .notify("notifications/initialized", json!({}))
+                .await?;
+            Self {
+                server_info: init,
+                ..client
+            }
         };
         // We declare no client capabilities, so server-initiated requests are only logged.
         let name = client.name.clone();
@@ -100,14 +109,16 @@ impl McpClient {
     }
 
     pub async fn notify(&self, method: &str, params: Value) -> Result<()> {
-        self.send(&json!({"jsonrpc": "2.0", "method": method, "params": params})).await
+        self.send(&json!({"jsonrpc": "2.0", "method": method, "params": params}))
+            .await
     }
 
     pub async fn request(&self, method: &str, params: Value) -> Result<Value> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let (tx, rx) = oneshot::channel();
         self.pending.lock().unwrap().insert(id, tx);
-        self.send(&json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params})).await?;
+        self.send(&json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params}))
+            .await?;
         let resp = tokio::time::timeout(Duration::from_secs(120), rx)
             .await
             .map_err(|_| anyhow!("MCP {}: tempo esgotado em {method}", self.name))?
@@ -137,7 +148,9 @@ impl McpClient {
     }
 
     pub async fn call_tool(&self, name: &str, args: Value) -> Result<(String, bool)> {
-        let r = self.request("tools/call", json!({"name": name, "arguments": args})).await?;
+        let r = self
+            .request("tools/call", json!({"name": name, "arguments": args}))
+            .await?;
         let mut text = Vec::new();
         for c in r["content"].as_array().cloned().unwrap_or_default() {
             match c["type"].as_str() {
@@ -156,7 +169,15 @@ impl McpClient {
 }
 
 fn sanitize(s: &str) -> String {
-    s.chars().map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' }).collect()
+    s.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
 }
 
 pub struct McpTool {
@@ -180,7 +201,11 @@ pub async fn register_tools(client: &Arc<McpClient>, reg: &mut ToolRegistry) -> 
             remote_name: remote,
             spec: ToolSpec {
                 name,
-                description: format!("[MCP {}] {}", client.name, t["description"].as_str().unwrap_or("")),
+                description: format!(
+                    "[MCP {}] {}",
+                    client.name,
+                    t["description"].as_str().unwrap_or("")
+                ),
                 parameters: schema,
             },
         }));
@@ -195,7 +220,10 @@ impl Tool for McpTool {
     }
     fn assess(&self, args: &Value, _: &ToolContext) -> RiskAssessment {
         let a: String = args.to_string().chars().take(200).collect();
-        RiskAssessment::new(Risk::Execute, format!("MCP {}: {} {a}", self.client.name, self.remote_name))
+        RiskAssessment::new(
+            Risk::Execute,
+            format!("MCP {}: {} {a}", self.client.name, self.remote_name),
+        )
     }
     async fn call(&self, args: Value, _: &ToolContext) -> Result<ToolOutput> {
         let (text, is_error) = self.client.call_tool(&self.remote_name, args).await?;

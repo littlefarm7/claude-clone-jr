@@ -6,7 +6,10 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use crate::{http, split_system, ChatRequest, ChatResponse, Message, ModelConfig, Part, Provider, Role, StopReason, Usage};
+use crate::{
+    http, split_system, ChatRequest, ChatResponse, Message, ModelConfig, Part, Provider, Role,
+    StopReason, Usage,
+};
 
 pub struct Gemini {
     cfg: ModelConfig,
@@ -16,7 +19,11 @@ pub struct Gemini {
 
 impl Gemini {
     pub fn new(cfg: ModelConfig, key: String) -> Self {
-        Self { cfg, key, client: http::client(Duration::from_secs(600)) }
+        Self {
+            cfg,
+            key,
+            client: http::client(Duration::from_secs(600)),
+        }
     }
 }
 
@@ -26,7 +33,10 @@ pub fn sanitize_schema(v: &Value) -> Value {
         Value::Object(map) => {
             let mut out = serde_json::Map::new();
             for (k, val) in map {
-                if matches!(k.as_str(), "additionalProperties" | "$schema" | "default" | "examples") {
+                if matches!(
+                    k.as_str(),
+                    "additionalProperties" | "$schema" | "default" | "examples"
+                ) {
                     continue;
                 }
                 out.insert(k.clone(), sanitize_schema(val));
@@ -42,21 +52,40 @@ pub fn to_wire(messages: &[Message]) -> (String, Vec<Value>) {
     let (system, rest) = split_system(messages);
     let mut out: Vec<Value> = Vec::new();
     for m in rest {
-        let role = if m.role == Role::Assistant { "model" } else { "user" };
+        let role = if m.role == Role::Assistant {
+            "model"
+        } else {
+            "user"
+        };
         let mut parts = Vec::new();
         for p in &m.parts {
             match p {
                 Part::Text { text } if !text.is_empty() => parts.push(json!({"text": text})),
-                Part::ToolCall { name, arguments, provider_meta, .. } => {
+                Part::ToolCall {
+                    name,
+                    arguments,
+                    provider_meta,
+                    ..
+                } => {
                     let mut part = json!({"functionCall": {"name": name, "args": arguments}});
-                    if let Some(sig) = provider_meta.as_ref().and_then(|m| m.get("thoughtSignature")) {
+                    if let Some(sig) = provider_meta
+                        .as_ref()
+                        .and_then(|m| m.get("thoughtSignature"))
+                    {
                         part["thoughtSignature"] = sig.clone();
                     }
                     parts.push(part);
                 }
-                Part::ToolResult { name, content, is_error, .. } => {
+                Part::ToolResult {
+                    name,
+                    content,
+                    is_error,
+                    ..
+                } => {
                     let key = if *is_error { "error" } else { "output" };
-                    parts.push(json!({"functionResponse": {"name": name, "response": {key: content}}}));
+                    parts.push(
+                        json!({"functionResponse": {"name": name, "response": {key: content}}}),
+                    );
                 }
                 Part::Image { mime, data_b64 } => {
                     parts.push(json!({"inlineData": {"mimeType": mime, "data": data_b64}}))
@@ -79,7 +108,9 @@ pub fn to_wire(messages: &[Message]) -> (String, Vec<Value>) {
 }
 
 pub fn parse_response(v: &Value) -> Result<ChatResponse> {
-    let cand = v["candidates"].get(0).ok_or_else(|| anyhow!("resposta sem 'candidates': {v}"))?;
+    let cand = v["candidates"]
+        .get(0)
+        .ok_or_else(|| anyhow!("resposta sem 'candidates': {v}"))?;
     let mut parts = Vec::new();
     if let Some(ps) = cand["content"]["parts"].as_array() {
         for p in ps {
@@ -89,11 +120,20 @@ pub fn parse_response(v: &Value) -> Result<ChatResponse> {
             if let Some(t) = p["text"].as_str() {
                 parts.push(Part::Text { text: t.into() });
             } else if let Some(fc) = p.get("functionCall") {
-                let meta = p.get("thoughtSignature").map(|s| json!({"thoughtSignature": s}));
+                let meta = p
+                    .get("thoughtSignature")
+                    .map(|s| json!({"thoughtSignature": s}));
                 parts.push(Part::ToolCall {
-                    id: fc["id"].as_str().map(String::from).unwrap_or_else(crate::new_call_id),
+                    id: fc["id"]
+                        .as_str()
+                        .map(String::from)
+                        .unwrap_or_else(crate::new_call_id),
                     name: fc["name"].as_str().unwrap_or("").into(),
-                    arguments: if fc["args"].is_object() { fc["args"].clone() } else { json!({}) },
+                    arguments: if fc["args"].is_object() {
+                        fc["args"].clone()
+                    } else {
+                        json!({})
+                    },
                     provider_meta: meta,
                 });
             }
@@ -108,9 +148,18 @@ pub fn parse_response(v: &Value) -> Result<ChatResponse> {
     };
     let usage = Usage {
         input_tokens: v["usageMetadata"]["promptTokenCount"].as_u64().unwrap_or(0),
-        output_tokens: v["usageMetadata"]["candidatesTokenCount"].as_u64().unwrap_or(0),
+        output_tokens: v["usageMetadata"]["candidatesTokenCount"]
+            .as_u64()
+            .unwrap_or(0),
     };
-    Ok(ChatResponse { message: Message { role: Role::Assistant, parts }, usage, stop })
+    Ok(ChatResponse {
+        message: Message {
+            role: Role::Assistant,
+            parts,
+        },
+        usage,
+        stop,
+    })
 }
 
 #[async_trait]
@@ -169,7 +218,9 @@ mod tests {
 
     #[test]
     fn schema_sanitized() {
-        let s = sanitize_schema(&json!({"type":"object","additionalProperties":false,"properties":{"a":{"type":"string","default":"x"}}}));
+        let s = sanitize_schema(
+            &json!({"type":"object","additionalProperties":false,"properties":{"a":{"type":"string","default":"x"}}}),
+        );
         assert!(s.get("additionalProperties").is_none());
         assert!(s["properties"]["a"].get("default").is_none());
     }

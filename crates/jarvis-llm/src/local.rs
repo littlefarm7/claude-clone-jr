@@ -26,7 +26,10 @@ pub struct LlamaServer {
 
 /// Root URL of an OpenAI-compatible base (strip trailing `/v1`).
 pub fn root_url(base_url: &str) -> String {
-    base_url.trim_end_matches('/').trim_end_matches("/v1").to_string()
+    base_url
+        .trim_end_matches('/')
+        .trim_end_matches("/v1")
+        .to_string()
 }
 
 pub async fn health(base_url: &str) -> bool {
@@ -79,7 +82,9 @@ impl LlamaServer {
         if let Some(t) = opts.threads {
             cmd.args(["-t", &t.to_string()]);
         }
-        let child = cmd.spawn().with_context(|| format!("falha ao iniciar {}", bin.display()))?;
+        let child = cmd
+            .spawn()
+            .with_context(|| format!("falha ao iniciar {}", bin.display()))?;
         let base_url = format!("http://127.0.0.1:{}/v1", opts.port);
         let mut server = Self { child, base_url };
         let started = Instant::now();
@@ -90,7 +95,15 @@ impl LlamaServer {
                     use tokio::io::AsyncReadExt;
                     let _ = e.read_to_string(&mut err).await;
                 }
-                let tail: String = err.lines().rev().take(15).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n");
+                let tail: String = err
+                    .lines()
+                    .rev()
+                    .take(15)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .collect::<Vec<_>>()
+                    .join("\n");
                 bail!("llama-server saiu com {status}:\n{tail}");
             }
             if health(&server.base_url).await {

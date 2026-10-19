@@ -102,7 +102,11 @@ fn wrap(text: &str, style: Style, width: f32) -> Vec<String> {
     let mut lines = Vec::new();
     let mut cur = String::new();
     for word in text.split_whitespace() {
-        let candidate = if cur.is_empty() { word.to_string() } else { format!("{cur} {word}") };
+        let candidate = if cur.is_empty() {
+            word.to_string()
+        } else {
+            format!("{cur} {word}")
+        };
         if text_width(&candidate, style) <= width || cur.is_empty() {
             // Hard-break words longer than a line.
             if cur.is_empty() && text_width(word, style) > width {
@@ -138,7 +142,12 @@ pub fn render(title: Option<&str>, markdown: &str) -> Vec<u8> {
     let usable = PAGE_W - 2.0 * MARGIN;
     let mut pages: Vec<Vec<u8>> = vec![Vec::new()];
     let mut y = PAGE_H - MARGIN;
-    let emit = |pages: &mut Vec<Vec<u8>>, y: &mut f32, line: &str, style: Style, indent: f32, gap_before: f32| {
+    let emit = |pages: &mut Vec<Vec<u8>>,
+                y: &mut f32,
+                line: &str,
+                style: Style,
+                indent: f32,
+                gap_before: f32| {
         let lh = style.size() * 1.35;
         if *y - gap_before - lh < MARGIN {
             pages.push(Vec::new());
@@ -148,7 +157,16 @@ pub fn render(title: Option<&str>, markdown: &str) -> Vec<u8> {
         }
         *y -= lh;
         let page = pages.last_mut().unwrap();
-        page.extend_from_slice(format!("BT /{} {} Tf {:.2} {:.2} Td ", style.font(), style.size(), MARGIN + indent, *y).as_bytes());
+        page.extend_from_slice(
+            format!(
+                "BT /{} {} Tf {:.2} {:.2} Td ",
+                style.font(),
+                style.size(),
+                MARGIN + indent,
+                *y
+            )
+            .as_bytes(),
+        );
         page.extend_from_slice(&pdf_string(line));
         page.extend_from_slice(b" Tj ET\n");
     };
@@ -166,7 +184,14 @@ pub fn render(title: Option<&str>, markdown: &str) -> Vec<u8> {
             continue;
         }
         if in_code {
-            emit(&mut pages, &mut y, if line.is_empty() { " " } else { line }, Style::Code, 10.0, 0.0);
+            emit(
+                &mut pages,
+                &mut y,
+                if line.is_empty() { " " } else { line },
+                Style::Code,
+                10.0,
+                0.0,
+            );
             continue;
         }
         if line.trim().is_empty() {
@@ -179,15 +204,43 @@ pub fn render(title: Option<&str>, markdown: &str) -> Vec<u8> {
             (Style::H2, t.to_string(), 0.0, 10.0)
         } else if let Some(t) = line.strip_prefix("# ") {
             (Style::H1, t.to_string(), 0.0, 12.0)
-        } else if let Some(t) = line.trim_start().strip_prefix("- ").or_else(|| line.trim_start().strip_prefix("* ")) {
+        } else if let Some(t) = line
+            .trim_start()
+            .strip_prefix("- ")
+            .or_else(|| line.trim_start().strip_prefix("* "))
+        {
             (Style::Bullet, format!("• {t}"), 12.0, 1.0)
         } else {
             (Style::Body, line.to_string(), 0.0, 2.0)
         };
         let text = strip_inline(&text);
-        for (i, l) in wrap(&text, style, usable - indent - if matches!(style, Style::Bullet) { 10.0 } else { 0.0 }).into_iter().enumerate() {
-            let extra = if matches!(style, Style::Bullet) && i > 0 { 10.0 } else { 0.0 };
-            emit(&mut pages, &mut y, &l, style, indent + extra, if i == 0 { gap } else { 0.0 });
+        for (i, l) in wrap(
+            &text,
+            style,
+            usable
+                - indent
+                - if matches!(style, Style::Bullet) {
+                    10.0
+                } else {
+                    0.0
+                },
+        )
+        .into_iter()
+        .enumerate()
+        {
+            let extra = if matches!(style, Style::Bullet) && i > 0 {
+                10.0
+            } else {
+                0.0
+            };
+            emit(
+                &mut pages,
+                &mut y,
+                &l,
+                style,
+                indent + extra,
+                if i == 0 { gap } else { 0.0 },
+            );
         }
     }
 
@@ -198,7 +251,12 @@ pub fn render(title: Option<&str>, markdown: &str) -> Vec<u8> {
     let kids: Vec<String> = (0..n).map(|i| format!("{} 0 R", 6 + 2 * i)).collect();
     objects.push(format!("<< /Type /Pages /Kids [{}] /Count {n} >>", kids.join(" ")).into_bytes());
     for base in ["Helvetica", "Helvetica-Bold", "Courier"] {
-        objects.push(format!("<< /Type /Font /Subtype /Type1 /BaseFont /{base} /Encoding /WinAnsiEncoding >>").into_bytes());
+        objects.push(
+            format!(
+                "<< /Type /Font /Subtype /Type1 /BaseFont /{base} /Encoding /WinAnsiEncoding >>"
+            )
+            .into_bytes(),
+        );
     }
     for (i, content) in pages.iter().enumerate() {
         objects.push(
@@ -222,11 +280,19 @@ pub fn render(title: Option<&str>, markdown: &str) -> Vec<u8> {
         out.extend_from_slice(b"\nendobj\n");
     }
     let xref = out.len();
-    out.extend_from_slice(format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1).as_bytes());
+    out.extend_from_slice(
+        format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1).as_bytes(),
+    );
     for o in offsets {
         out.extend_from_slice(format!("{o:010} 00000 n \n").as_bytes());
     }
-    out.extend_from_slice(format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n", objects.len() + 1).as_bytes());
+    out.extend_from_slice(
+        format!(
+            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n",
+            objects.len() + 1
+        )
+        .as_bytes(),
+    );
     out
 }
 
@@ -236,10 +302,21 @@ mod tests {
 
     #[test]
     fn structure() {
-        let pdf = render(Some("Título"), &"# Seção\nTexto com acentuação: ção é à.\n- item\n".repeat(80));
+        let pdf = render(
+            Some("Título"),
+            &"# Seção\nTexto com acentuação: ção é à.\n- item\n".repeat(80),
+        );
         let s = String::from_utf8_lossy(&pdf);
         assert!(s.starts_with("%PDF-1.4"));
-        let count: usize = s.split("/Count ").nth(1).unwrap().split_whitespace().next().unwrap().parse().unwrap();
+        let count: usize = s
+            .split("/Count ")
+            .nth(1)
+            .unwrap()
+            .split_whitespace()
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap();
         assert!(count >= 2, "deveria ter várias páginas: {count}");
         assert!(s.trim_end().ends_with("%%EOF"));
     }

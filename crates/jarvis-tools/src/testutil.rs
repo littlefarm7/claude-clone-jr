@@ -24,7 +24,10 @@ pub fn context_with(cfg: Config) -> ToolContext {
         session_id: "test".into(),
         cancel: CancellationToken::new(),
         guard: Arc::new(PathGuard::from_config(&cfg.permissions)),
-        memory: Arc::new(Memory::new(store.clone(), Arc::new(HashEmbedder::default()))),
+        memory: Arc::new(Memory::new(
+            store.clone(),
+            Arc::new(HashEmbedder::default()),
+        )),
         store,
         timeout: Duration::from_secs(30),
         max_output: 20_000,

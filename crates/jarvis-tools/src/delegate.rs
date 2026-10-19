@@ -31,12 +31,31 @@ impl Tool for DelegateTask {
     }
     fn assess(&self, args: &Value, _: &ToolContext) -> RiskAssessment {
         // The child's own tool calls go through the normal permission checks.
-        RiskAssessment::new(Risk::Read, format!("subagente: {}", arg_str(args, "task").unwrap_or("")))
+        RiskAssessment::new(
+            Risk::Read,
+            format!("subagente: {}", arg_str(args, "task").unwrap_or("")),
+        )
     }
     async fn call(&self, args: Value, ctx: &ToolContext) -> Result<ToolOutput> {
-        let Some(runner) = &ctx.subagents else { bail!("subagentes indisponíveis neste contexto") };
-        let tools: Vec<String> = args["tools"].as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect()).unwrap_or_default();
-        let out = runner.run_subagent(&ctx.session_id, arg_str(&args, "task").unwrap_or(""), tools, ctx.cancel.child_token()).await?;
+        let Some(runner) = &ctx.subagents else {
+            bail!("subagentes indisponíveis neste contexto")
+        };
+        let tools: Vec<String> = args["tools"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let out = runner
+            .run_subagent(
+                &ctx.session_id,
+                arg_str(&args, "task").unwrap_or(""),
+                tools,
+                ctx.cancel.child_token(),
+            )
+            .await?;
         Ok(ToolOutput::ok(out))
     }
 }

@@ -43,10 +43,14 @@ pub fn parse_front_matter(text: &str) -> (Option<String>, Option<String>) {
 pub fn discover(cfg: &Config) -> Vec<Skill> {
     let mut out = Vec::new();
     for d in &cfg.skills_dirs {
-        let Ok(rd) = std::fs::read_dir(expand(d)) else { continue };
+        let Ok(rd) = std::fs::read_dir(expand(d)) else {
+            continue;
+        };
         for e in rd.flatten() {
             let file = e.path().join("SKILL.md");
-            let Ok(text) = std::fs::read_to_string(&file) else { continue };
+            let Ok(text) = std::fs::read_to_string(&file) else {
+                continue;
+            };
             let (name, desc) = parse_front_matter(&text);
             out.push(Skill {
                 name: name.unwrap_or_else(|| e.file_name().to_string_lossy().to_string()),
@@ -76,12 +80,16 @@ impl Tool for SkillLoad {
     fn spec(&self) -> ToolSpec {
         ToolSpec {
             name: "skill_load".into(),
-            description: "Carrega as instruções completas de uma skill instalada pelo usuário.".into(),
+            description: "Carrega as instruções completas de uma skill instalada pelo usuário."
+                .into(),
             parameters: json!({"type":"object","properties":{"name":{"type":"string","enum": self.skills.iter().map(|s| s.name.clone()).collect::<Vec<_>>()}},"required":["name"]}),
         }
     }
     fn assess(&self, args: &Value, _: &ToolContext) -> RiskAssessment {
-        RiskAssessment::new(Risk::Read, format!("carregar skill {}", arg_str(args, "name").unwrap_or("")))
+        RiskAssessment::new(
+            Risk::Read,
+            format!("carregar skill {}", arg_str(args, "name").unwrap_or("")),
+        )
     }
     async fn call(&self, args: Value, _: &ToolContext) -> Result<ToolOutput> {
         let name = arg_str(&args, "name").unwrap_or("");
@@ -89,7 +97,13 @@ impl Tool for SkillLoad {
             return Ok(ToolOutput::err(format!("skill '{name}' não existe")));
         };
         let body = std::fs::read_to_string(s.dir.join("SKILL.md"))?;
-        let files: Vec<String> = std::fs::read_dir(&s.dir)?.flatten().map(|e| e.path().display().to_string()).collect();
-        Ok(ToolOutput::ok(format!("{body}\n\nArquivos da skill:\n{}", files.join("\n"))))
+        let files: Vec<String> = std::fs::read_dir(&s.dir)?
+            .flatten()
+            .map(|e| e.path().display().to_string())
+            .collect();
+        Ok(ToolOutput::ok(format!(
+            "{body}\n\nArquivos da skill:\n{}",
+            files.join("\n")
+        )))
     }
 }

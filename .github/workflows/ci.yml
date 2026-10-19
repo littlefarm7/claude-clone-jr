@@ -1,0 +1,34 @@
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Dependências de sistema
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils pandoc ffmpeg bubblewrap espeak-ng tesseract-ocr tesseract-ocr-por
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+  appimage:
+    runs-on: ubuntu-24.04
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: pip install ziglang cargo-zigbuild
+      - run: ./scripts/build-appimage.sh
+      - run: APPIMAGE_EXTRACT_AND_RUN=1 ./dist/*.AppImage --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appimage
+          path: dist/*.AppImage

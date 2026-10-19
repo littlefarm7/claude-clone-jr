@@ -50,7 +50,10 @@ impl Audit {
             std::fs::File::create(&path)?;
             crate::config::set_private(&path);
         }
-        Ok(Self { path, last_hash: Mutex::new(last) })
+        Ok(Self {
+            path,
+            last_hash: Mutex::new(last),
+        })
     }
 
     pub fn path(&self) -> &Path {
@@ -78,7 +81,10 @@ impl Audit {
         });
         let hash = hex::encode(Sha256::digest(v.to_string().as_bytes()));
         v["hash"] = Value::String(hash.clone());
-        let mut f = OpenOptions::new().append(true).create(true).open(&self.path)?;
+        let mut f = OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(&self.path)?;
         writeln!(f, "{v}")?;
         *last = hash;
         Ok(())
@@ -97,7 +103,10 @@ impl Audit {
             let mut v: Value = serde_json::from_str(&line)?;
             let hash = v["hash"].as_str().unwrap_or("").to_string();
             if v["prev_hash"].as_str() != Some(prev.as_str()) {
-                bail!("linha {}: encadeamento quebrado (linha removida ou reordenada)", i + 1);
+                bail!(
+                    "linha {}: encadeamento quebrado (linha removida ou reordenada)",
+                    i + 1
+                );
             }
             v.as_object_mut().unwrap().remove("hash");
             let calc = hex::encode(Sha256::digest(v.to_string().as_bytes()));
@@ -121,15 +130,25 @@ mod tests {
         let p = dir.path().join("a.jsonl");
         let a = Audit::open(&p).unwrap();
         for i in 0..3 {
-            a.record(AuditEntry { session: "s".into(), event: format!("e{i}"), args: Some(json!({"k": "sk-ant-aaaaaaaaaaaaaaaaaaaa"})), ..Default::default() })
-                .unwrap();
+            a.record(AuditEntry {
+                session: "s".into(),
+                event: format!("e{i}"),
+                args: Some(json!({"k": "sk-ant-aaaaaaaaaaaaaaaaaaaa"})),
+                ..Default::default()
+            })
+            .unwrap();
         }
         assert_eq!(Audit::verify(&p).unwrap(), 3);
         let text = std::fs::read_to_string(&p).unwrap();
         assert!(!text.contains("sk-ant-aaaa"));
         // Reopen continues the chain.
         let a = Audit::open(&p).unwrap();
-        a.record(AuditEntry { session: "s".into(), event: "e3".into(), ..Default::default() }).unwrap();
+        a.record(AuditEntry {
+            session: "s".into(),
+            event: "e3".into(),
+            ..Default::default()
+        })
+        .unwrap();
         assert_eq!(Audit::verify(&p).unwrap(), 4);
         std::fs::write(&p, text.replacen("e1", "eX", 1)).unwrap();
         assert!(Audit::verify(&p).is_err());

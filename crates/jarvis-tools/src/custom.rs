@@ -18,7 +18,10 @@ pub fn register(reg: &mut ToolRegistry, cfg: &Config, warnings: &mut Vec<String>
             continue;
         }
         if reg.get(&t.name).is_some() {
-            warnings.push(format!("custom tool '{}' conflita com uma ferramenta existente", t.name));
+            warnings.push(format!(
+                "custom tool '{}' conflita com uma ferramenta existente",
+                t.name
+            ));
             continue;
         }
         reg.register(Arc::new(CustomTool(t.clone())));
@@ -62,7 +65,12 @@ impl CustomTool {
 #[async_trait]
 impl Tool for CustomTool {
     fn spec(&self) -> ToolSpec {
-        let props: serde_json::Map<String, Value> = self.0.params.iter().map(|(k, d)| (k.clone(), json!({"type":"string","description": d}))).collect();
+        let props: serde_json::Map<String, Value> = self
+            .0
+            .params
+            .iter()
+            .map(|(k, d)| (k.clone(), json!({"type":"string","description": d})))
+            .collect();
         ToolSpec {
             name: self.0.name.clone(),
             description: self.0.description.clone(),
@@ -70,12 +78,16 @@ impl Tool for CustomTool {
         }
     }
     fn assess(&self, args: &Value, _: &ToolContext) -> RiskAssessment {
-        RiskAssessment::new(parse_risk(&self.0.risk), format!("$ {}", shell_words::join(self.argv(args))))
+        RiskAssessment::new(
+            parse_risk(&self.0.risk),
+            format!("$ {}", shell_words::join(self.argv(args))),
+        )
     }
     async fn call(&self, args: Value, ctx: &ToolContext) -> Result<ToolOutput> {
         let argv = self.argv(&args);
         let cmd = crate::shell::build_command(&argv[0], &argv[1..], &ctx.guard.cwd(), ctx, true);
-        let res = crate::shell::run_command(cmd, Duration::from_secs(ctx.timeout.as_secs()), ctx).await?;
+        let res =
+            crate::shell::run_command(cmd, Duration::from_secs(ctx.timeout.as_secs()), ctx).await?;
         let mut out = ToolOutput::ok(res.render(ctx.max_output));
         out.is_error = !res.ok();
         Ok(out)

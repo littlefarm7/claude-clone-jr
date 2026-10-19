@@ -9,12 +9,16 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "jarvis", version, about = "Jarvis Core — agente autônomo local-first")]
+#[command(
+    name = "jarvis",
+    version,
+    about = "Jarvis Core — agente autônomo local-first"
+)]
 pub struct Cli {
     /// Modelo a usar (nome em [[models]] da configuração)
     #[arg(long, short, global = true)]
     pub model: Option<String>,
-    /// Aprova automaticamente ações que pedem confirmação (exceto administrativas)
+    /// Aprova escrita/execução/rede automaticamente (nunca ações destrutivas ou administrativas)
     #[arg(long, global = true)]
     pub yes: bool,
     /// Nunca pergunta: nega tudo que exigir aprovação
@@ -130,8 +134,12 @@ pub enum MemoryCmd {
         #[arg(long, default_value = "")]
         tags: String,
     },
-    Search { query: Vec<String> },
-    Delete { id: i64 },
+    Search {
+        query: Vec<String>,
+    },
+    Delete {
+        id: i64,
+    },
     Clear {
         #[arg(long)]
         yes: bool,
@@ -158,7 +166,9 @@ pub enum ScheduleCmd {
         now: bool,
     },
     List,
-    Delete { id: i64 },
+    Delete {
+        id: i64,
+    },
 }
 
 #[derive(Subcommand)]
@@ -213,7 +223,10 @@ async fn main() {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);
     }
     tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::try_from_env("JARVIS_LOG").unwrap_or_else(|_| "warn".into()))
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_env("JARVIS_LOG")
+                .unwrap_or_else(|_| "warn".into()),
+        )
         .with_writer(std::io::stderr)
         .init();
     let cli = Cli::parse();
@@ -232,7 +245,11 @@ async fn run(cli: Cli) -> Result<i32> {
     match &cli.cmd {
         None => commands::chat(cli.clone(), None).await,
         Some(Cmd::Chat { session }) => commands::chat(cli.clone(), session.clone()).await,
-        Some(Cmd::Run { task, allow, detach }) => {
+        Some(Cmd::Run {
+            task,
+            allow,
+            detach,
+        }) => {
             if *detach {
                 commands::detach()
             } else {
@@ -249,7 +266,12 @@ async fn run(cli: Cli) -> Result<i32> {
         Some(Cmd::History { query }) => commands::history(&cli, &query.join(" ")).await,
         Some(Cmd::Memory { cmd }) => commands::memory(&cli, cmd).await,
         Some(Cmd::Models) => commands::models(&cli).await,
-        Some(Cmd::Serve { gguf, port, gpu_layers, ctx }) => commands::serve(&cli, gguf, *port, *gpu_layers, *ctx).await,
+        Some(Cmd::Serve {
+            gguf,
+            port,
+            gpu_layers,
+            ctx,
+        }) => commands::serve(&cli, gguf, *port, *gpu_layers, *ctx).await,
         Some(Cmd::Tools) => commands::tools(&cli).await,
         Some(Cmd::Audit { cmd }) => commands::audit(cmd).await,
         Some(Cmd::Config { cmd }) => commands::config(&cli, cmd).await,

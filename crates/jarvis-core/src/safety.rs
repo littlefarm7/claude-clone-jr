@@ -93,9 +93,17 @@ pub fn redact(text: &str) -> String {
 
 pub fn is_secret_env(name: &str) -> bool {
     let n = name.to_uppercase();
-    ["API_KEY", "_TOKEN", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL", "_PAT"]
-        .iter()
-        .any(|s| n.contains(s))
+    [
+        "API_KEY",
+        "_TOKEN",
+        "SECRET",
+        "PASSWORD",
+        "PASSWD",
+        "CREDENTIAL",
+        "_PAT",
+    ]
+    .iter()
+    .any(|s| n.contains(s))
         || n == "GH_TOKEN"
         || n == "GITHUB_TOKEN"
 }
@@ -115,7 +123,12 @@ pub fn truncate_middle(s: &str, max: usize) -> String {
     while !s.is_char_boundary(t) {
         t += 1;
     }
-    format!("{}\n\n[... {} bytes omitidos ...]\n\n{}", &s[..h], t - h, &s[t..])
+    format!(
+        "{}\n\n[... {} bytes omitidos ...]\n\n{}",
+        &s[..h],
+        t - h,
+        &s[t..]
+    )
 }
 
 #[cfg(test)]

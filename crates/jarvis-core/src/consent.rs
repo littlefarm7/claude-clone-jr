@@ -14,12 +14,20 @@ pub fn consent_key(m: &ModelConfig) -> String {
 }
 
 /// Ensure the user agreed to send conversation data to this remote provider.
-pub async fn ensure_remote_consent(store: &Store, approver: &dyn Approver, privacy: &PrivacyConfig, m: &ModelConfig) -> Result<()> {
+pub async fn ensure_remote_consent(
+    store: &Store,
+    approver: &dyn Approver,
+    privacy: &PrivacyConfig,
+    m: &ModelConfig,
+) -> Result<()> {
     if m.is_local() {
         return Ok(());
     }
     if privacy.local_only {
-        bail!("privacy.local_only está ativo: o modelo remoto '{}' não pode ser usado", m.name);
+        bail!(
+            "privacy.local_only está ativo: o modelo remoto '{}' não pode ser usado",
+            m.name
+        );
     }
     let key = consent_key(m);
     if store.has_consent(&key)? {

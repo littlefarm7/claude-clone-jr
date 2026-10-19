@@ -7,7 +7,10 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use crate::{http, ChatRequest, ChatResponse, Message, ModelConfig, Part, Provider, ProviderKind, Role, StopReason, Usage};
+use crate::{
+    http, ChatRequest, ChatResponse, Message, ModelConfig, Part, Provider, ProviderKind, Role,
+    StopReason, Usage,
+};
 
 pub struct OpenAiCompat {
     cfg: ModelConfig,
@@ -19,7 +22,11 @@ impl OpenAiCompat {
     pub fn new(cfg: ModelConfig, key: Option<String>) -> Self {
         // Local CPU inference can be slow; allow long requests.
         let timeout = if cfg.is_local() { 900 } else { 300 };
-        Self { cfg, key, client: http::client(Duration::from_secs(timeout)) }
+        Self {
+            cfg,
+            key,
+            client: http::client(Duration::from_secs(timeout)),
+        }
     }
 }
 
@@ -56,7 +63,12 @@ pub fn to_wire_messages(messages: &[Message]) -> Vec<Value> {
                     .parts
                     .iter()
                     .filter_map(|p| match p {
-                        Part::ToolCall { id, name, arguments, .. } => Some(json!({
+                        Part::ToolCall {
+                            id,
+                            name,
+                            arguments,
+                            ..
+                        } => Some(json!({
                             "id": id,
                             "type": "function",
                             "function": {"name": name, "arguments": arguments.to_string()}
@@ -78,14 +90,19 @@ pub fn to_wire_messages(messages: &[Message]) -> Vec<Value> {
 
 fn push_tool_results(m: &Message, out: &mut Vec<Value>) {
     for p in &m.parts {
-        if let Part::ToolResult { call_id, content, .. } = p {
+        if let Part::ToolResult {
+            call_id, content, ..
+        } = p
+        {
             out.push(json!({"role": "tool", "tool_call_id": call_id, "content": content}));
         }
     }
 }
 
 pub fn parse_response(v: &Value) -> Result<ChatResponse> {
-    let choice = v["choices"].get(0).ok_or_else(|| anyhow!("resposta sem 'choices': {v}"))?;
+    let choice = v["choices"]
+        .get(0)
+        .ok_or_else(|| anyhow!("resposta sem 'choices': {v}"))?;
     let msg = &choice["message"];
     let mut parts = Vec::new();
     let mut text = msg["content"].as_str().unwrap_or("").to_string();
@@ -99,8 +116,16 @@ pub fn parse_response(v: &Value) -> Result<ChatResponse> {
                 Value::Object(_) => args_raw.clone(),
                 _ => json!({}),
             };
-            let id = c["id"].as_str().map(String::from).unwrap_or_else(crate::new_call_id);
-            parts.push(Part::ToolCall { id, name, arguments, provider_meta: None });
+            let id = c["id"]
+                .as_str()
+                .map(String::from)
+                .unwrap_or_else(crate::new_call_id);
+            parts.push(Part::ToolCall {
+                id,
+                name,
+                arguments,
+                provider_meta: None,
+            });
         }
     }
     if parts.is_empty() {
@@ -130,7 +155,14 @@ pub fn parse_response(v: &Value) -> Result<ChatResponse> {
         input_tokens: v["usage"]["prompt_tokens"].as_u64().unwrap_or(0),
         output_tokens: v["usage"]["completion_tokens"].as_u64().unwrap_or(0),
     };
-    Ok(ChatResponse { message: Message { role: Role::Assistant, parts }, usage, stop })
+    Ok(ChatResponse {
+        message: Message {
+            role: Role::Assistant,
+            parts,
+        },
+        usage,
+        stop,
+    })
 }
 
 /// Extract `<tool_call>{"name":..,"arguments":..}</tool_call>` blocks.
@@ -171,7 +203,15 @@ pub fn extract_tagged_tool_calls(text: &str) -> (String, Vec<Part>) {
 #[async_trait]
 impl Provider for OpenAiCompat {
     fn id(&self) -> String {
-        format!("{}:{}", if self.cfg.is_local() { "local" } else { "openai" }, self.cfg.model)
+        format!(
+            "{}:{}",
+            if self.cfg.is_local() {
+                "local"
+            } else {
+                "openai"
+            },
+            self.cfg.model
+        )
     }
 
     fn is_local(&self) -> bool {
@@ -203,7 +243,10 @@ impl Provider for OpenAiCompat {
         if let Some(k) = &self.key {
             headers.push(("authorization", format!("Bearer {k}")));
         }
-        let url = format!("{}/chat/completions", self.cfg.base_url().trim_end_matches('/'));
+        let url = format!(
+            "{}/chat/completions",
+            self.cfg.base_url().trim_end_matches('/')
+        );
         let v = http::post_json(&self.client, &url, &headers, &body).await?;
         parse_response(&v)
     }
@@ -242,11 +285,21 @@ mod tests {
             Message::user("u"),
             Message {
                 role: Role::Assistant,
-                parts: vec![Part::ToolCall { id: "c1".into(), name: "t".into(), arguments: json!({"a":1}), provider_meta: None }],
+                parts: vec![Part::ToolCall {
+                    id: "c1".into(),
+                    name: "t".into(),
+                    arguments: json!({"a":1}),
+                    provider_meta: None,
+                }],
             },
             Message {
                 role: Role::Tool,
-                parts: vec![Part::ToolResult { call_id: "c1".into(), name: "t".into(), content: "r".into(), is_error: false }],
+                parts: vec![Part::ToolResult {
+                    call_id: "c1".into(),
+                    name: "t".into(),
+                    content: "r".into(),
+                    is_error: false,
+                }],
             },
         ];
         let w = to_wire_messages(&msgs);

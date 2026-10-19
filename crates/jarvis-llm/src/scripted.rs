@@ -23,12 +23,18 @@ impl Default for Scripted {
 
 impl Scripted {
     pub fn new() -> Self {
-        Self { queue: Mutex::new(VecDeque::new()), requests: Mutex::new(Vec::new()) }
+        Self {
+            queue: Mutex::new(VecDeque::new()),
+            requests: Mutex::new(Vec::new()),
+        }
     }
 
     /// Queue a fixed reply.
     pub fn push(&self, msg: Message) -> &Self {
-        self.queue.lock().unwrap().push_back(Box::new(move |_| msg.clone()));
+        self.queue
+            .lock()
+            .unwrap()
+            .push_back(Box::new(move |_| msg.clone()));
         self
     }
 
@@ -41,7 +47,12 @@ impl Scripted {
     pub fn call(name: &str, args: serde_json::Value) -> Message {
         Message {
             role: Role::Assistant,
-            parts: vec![Part::ToolCall { id: crate::new_call_id(), name: name.into(), arguments: args, provider_meta: None }],
+            parts: vec![Part::ToolCall {
+                id: crate::new_call_id(),
+                name: name.into(),
+                arguments: args,
+                provider_meta: None,
+            }],
         }
     }
 
@@ -61,10 +72,26 @@ impl Provider for Scripted {
     }
 
     async fn chat(&self, req: ChatRequest) -> Result<ChatResponse> {
-        let f = self.queue.lock().unwrap().pop_front().ok_or_else(|| anyhow!("script esgotado"))?;
+        let f = self
+            .queue
+            .lock()
+            .unwrap()
+            .pop_front()
+            .ok_or_else(|| anyhow!("script esgotado"))?;
         let message = f(&req);
         self.requests.lock().unwrap().push(req);
-        let stop = if message.tool_calls().is_empty() { StopReason::EndTurn } else { StopReason::ToolUse };
-        Ok(ChatResponse { message, usage: Usage { input_tokens: 10, output_tokens: 5 }, stop })
+        let stop = if message.tool_calls().is_empty() {
+            StopReason::EndTurn
+        } else {
+            StopReason::ToolUse
+        };
+        Ok(ChatResponse {
+            message,
+            usage: Usage {
+                input_tokens: 10,
+                output_tokens: 5,
+            },
+            stop,
+        })
     }
 }

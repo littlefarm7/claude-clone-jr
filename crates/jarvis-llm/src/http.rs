@@ -35,8 +35,9 @@ pub async fn post_json(
                 let status = resp.status();
                 let text = resp.text().await.unwrap_or_default();
                 if status.is_success() {
-                    return serde_json::from_str(&text)
-                        .map_err(|e| anyhow!("resposta JSON inválida: {e}: {}", truncate(&text, 300)));
+                    return serde_json::from_str(&text).map_err(|e| {
+                        anyhow!("resposta JSON inválida: {e}: {}", truncate(&text, 300))
+                    });
                 }
                 let err = anyhow!("HTTP {status}: {}", truncate(&text, 600));
                 if status.as_u16() == 429 || status.is_server_error() {

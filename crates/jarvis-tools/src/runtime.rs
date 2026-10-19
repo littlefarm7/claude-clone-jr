@@ -67,16 +67,26 @@ impl Runtime {
             ));
         }
         for w in cfg.workspace_roots() {
-            std::fs::create_dir_all(&w).with_context(|| format!("criando workspace {}", w.display()))?;
+            std::fs::create_dir_all(&w)
+                .with_context(|| format!("criando workspace {}", w.display()))?;
         }
         let store = Arc::new(Store::open(dir.join("jarvis.db"))?);
         let stale = store.mark_stale_running()?;
         if stale > 0 {
-            warnings.push(format!("{stale} sessão(ões) interrompida(s) podem ser retomadas com `jarvis resume <id>`"));
+            warnings.push(format!(
+                "{stale} sessão(ões) interrompida(s) podem ser retomadas com `jarvis resume <id>`"
+            ));
         }
         let audit = Arc::new(Audit::open(dir.join("audit.jsonl"))?);
-        let embedder: Arc<dyn Embedder> = match cfg.memory.embedding_model.as_ref().and_then(|n| cfg.model(n)) {
-            Some(m) => Arc::new(HttpEmbedder(jarvis_llm::embeddings::EmbeddingClient::new(m.clone()))),
+        let embedder: Arc<dyn Embedder> = match cfg
+            .memory
+            .embedding_model
+            .as_ref()
+            .and_then(|n| cfg.model(n))
+        {
+            Some(m) => Arc::new(HttpEmbedder(jarvis_llm::embeddings::EmbeddingClient::new(
+                m.clone(),
+            ))),
             None => Arc::new(HashEmbedder::default()),
         };
         let memory = Arc::new(Memory::new(store.clone(), embedder));
@@ -126,7 +136,10 @@ impl Runtime {
             let mut a = router::static_availability(m, &res);
             if m.is_local() && a == Availability::Ready && m.gguf_path.is_none() {
                 if !local::health(&m.base_url()).await {
-                    a = Availability::Unavailable(format!("servidor local não responde em {}", m.base_url()));
+                    a = Availability::Unavailable(format!(
+                        "servidor local não responde em {}",
+                        m.base_url()
+                    ));
                 }
             } else if a == Availability::Startable && local::health(&m.base_url()).await {
                 a = Availability::Ready;
@@ -139,13 +152,23 @@ impl Runtime {
     }
 
     /// Choose a model for `task`, start llama-server if needed and get consent for remote use.
-    pub async fn select_model(&self, explicit: Option<&str>, task: &str, approver: &dyn Approver) -> Result<SelectedModel> {
+    pub async fn select_model(
+        &self,
+        explicit: Option<&str>,
+        task: &str,
+        approver: &dyn Approver,
+    ) -> Result<SelectedModel> {
         let profile = router::classify_task(task);
         let avail = self.availability().await;
         let opts = RouterOptions {
             explicit: explicit.map(String::from).or_else(|| {
                 // The configured default wins when it is usable.
-                self.cfg.default_model.clone().filter(|d| matches!(avail.get(d), Some(Availability::Ready | Availability::Startable)))
+                self.cfg.default_model.clone().filter(|d| {
+                    matches!(
+                        avail.get(d),
+                        Some(Availability::Ready | Availability::Startable)
+                    )
+                })
             }),
             local_only: self.cfg.privacy.local_only,
             prefer_local: self.cfg.privacy.prefer_local,
@@ -157,7 +180,11 @@ impl Runtime {
         }
         ensure_remote_consent(&self.store, approver, &self.cfg.privacy, &m).await?;
         let provider = build_provider(&m)?;
-        Ok(SelectedModel { config: m, provider, reason })
+        Ok(SelectedModel {
+            config: m,
+            provider,
+            reason,
+        })
     }
 
     pub async fn start_local(&self, m: &ModelConfig) -> Result<()> {
@@ -165,7 +192,10 @@ impl Runtime {
         if guard.is_some() && local::health(&m.base_url()).await {
             return Ok(());
         }
-        let gguf = m.gguf_path.as_deref().context("modelo local sem gguf_path")?;
+        let gguf = m
+            .gguf_path
+            .as_deref()
+            .context("modelo local sem gguf_path")?;
         let port = m
             .base_url()
             .rsplit(':')
@@ -173,10 +203,17 @@ impl Runtime {
             .and_then(|p| p.trim_end_matches("/v1").trim_end_matches('/').parse().ok())
             .unwrap_or(self.cfg.local.port);
         let server = LlamaServer::start(&LlamaServerOptions {
-            binary: self.cfg.local.llama_server.as_deref().map(jarvis_core::config::expand),
+            binary: self
+                .cfg
+                .local
+                .llama_server
+                .as_deref()
+                .map(jarvis_core::config::expand),
             gguf: jarvis_core::config::expand(gguf),
             port,
-            ctx_size: m.context_window.min(self.cfg.local.ctx_size.max(m.context_window)),
+            ctx_size: m
+                .context_window
+                .min(self.cfg.local.ctx_size.max(m.context_window)),
             gpu_layers: self.cfg.local.gpu_layers,
             threads: self.cfg.local.threads,
             extra_args: vec![],
@@ -186,7 +223,12 @@ impl Runtime {
         Ok(())
     }
 
-    pub fn agent(&self, sel: &SelectedModel, approver: Arc<dyn Approver>, events: Arc<dyn EventSink>) -> Agent {
+    pub fn agent(
+        &self,
+        sel: &SelectedModel,
+        approver: Arc<dyn Approver>,
+        events: Arc<dyn EventSink>,
+    ) -> Agent {
         Agent::new(AgentDeps {
             provider: sel.provider.clone(),
             model: sel.config.clone(),

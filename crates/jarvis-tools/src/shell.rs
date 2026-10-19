@@ -28,29 +28,170 @@ pub fn register(r: &mut ToolRegistry) {
 // ---------------------------------------------------------------------------
 
 const ADMIN: &[&str] = &[
-    "sudo", "su", "doas", "pkexec", "run0", "passwd", "visudo", "mount", "umount", "modprobe", "insmod", "rmmod",
-    "reboot", "shutdown", "poweroff", "halt", "init", "telinit", "useradd", "usermod", "userdel", "groupadd",
-    "groupdel", "chpasswd", "iptables", "ip6tables", "nft", "ufw", "service", "update-grub", "grub-install",
-    "dpkg-reconfigure", "chroot", "setcap", "swapon", "swapoff", "cryptsetup", "lvm", "sysctl",
+    "sudo",
+    "su",
+    "doas",
+    "pkexec",
+    "run0",
+    "passwd",
+    "visudo",
+    "mount",
+    "umount",
+    "modprobe",
+    "insmod",
+    "rmmod",
+    "reboot",
+    "shutdown",
+    "poweroff",
+    "halt",
+    "init",
+    "telinit",
+    "useradd",
+    "usermod",
+    "userdel",
+    "groupadd",
+    "groupdel",
+    "chpasswd",
+    "iptables",
+    "ip6tables",
+    "nft",
+    "ufw",
+    "service",
+    "update-grub",
+    "grub-install",
+    "dpkg-reconfigure",
+    "chroot",
+    "setcap",
+    "swapon",
+    "swapoff",
+    "cryptsetup",
+    "lvm",
+    "sysctl",
 ];
 const DESTRUCTIVE: &[&str] = &[
-    "rm", "rmdir", "shred", "dd", "wipefs", "fdisk", "sfdisk", "parted", "gdisk", "truncate", "kill", "killall",
-    "pkill", "srm", "unlink",
+    "rm", "rmdir", "shred", "dd", "wipefs", "fdisk", "sfdisk", "parted", "gdisk", "truncate",
+    "kill", "killall", "pkill", "srm", "unlink",
 ];
 const NETWORK: &[&str] = &[
-    "curl", "wget", "ssh", "scp", "sftp", "rsync", "nc", "ncat", "netcat", "telnet", "ftp", "aria2c", "yt-dlp",
+    "curl",
+    "wget",
+    "ssh",
+    "scp",
+    "sftp",
+    "rsync",
+    "nc",
+    "ncat",
+    "netcat",
+    "telnet",
+    "ftp",
+    "aria2c",
+    "yt-dlp",
     "youtube-dl",
 ];
 const READ_ONLY: &[&str] = &[
-    "ls", "cat", "head", "tail", "wc", "grep", "rg", "egrep", "fgrep", "pwd", "echo", "printf", "date", "cal",
-    "uname", "whoami", "id", "groups", "df", "du", "free", "uptime", "ps", "pgrep", "lscpu", "lsblk", "lspci",
-    "lsusb", "lsmod", "hostname", "which", "whereis", "type", "file", "stat", "sort", "uniq", "cut", "tr", "diff",
-    "cmp", "md5sum", "sha1sum", "sha256sum", "b2sum", "tree", "basename", "dirname", "realpath", "readlink",
-    "nproc", "env", "printenv", "locale", "true", "false", "test", "seq", "column", "jq", "less", "more", "nl",
-    "od", "xxd", "hexdump", "strings", "journalctl", "dmesg", "sensors", "inxi", "neofetch", "fastfetch",
-    "glxinfo", "vulkaninfo", "clinfo", "rocminfo", "nvidia-smi", "ffprobe", "pdfinfo", "pdftotext", "identify",
-    "exiftool", "mediainfo", "top", "htop", "vmstat", "iostat", "lsof", "ss", "getent", "tty", "sleep", "time",
-    "man", "apropos", "fc-list", "xdg-mime", "zcat", "zgrep", "awk", "sed", "find",
+    "ls",
+    "cat",
+    "head",
+    "tail",
+    "wc",
+    "grep",
+    "rg",
+    "egrep",
+    "fgrep",
+    "pwd",
+    "echo",
+    "printf",
+    "date",
+    "cal",
+    "uname",
+    "whoami",
+    "id",
+    "groups",
+    "df",
+    "du",
+    "free",
+    "uptime",
+    "ps",
+    "pgrep",
+    "lscpu",
+    "lsblk",
+    "lspci",
+    "lsusb",
+    "lsmod",
+    "hostname",
+    "which",
+    "whereis",
+    "type",
+    "file",
+    "stat",
+    "sort",
+    "uniq",
+    "cut",
+    "tr",
+    "diff",
+    "cmp",
+    "md5sum",
+    "sha1sum",
+    "sha256sum",
+    "b2sum",
+    "tree",
+    "basename",
+    "dirname",
+    "realpath",
+    "readlink",
+    "nproc",
+    "env",
+    "printenv",
+    "locale",
+    "true",
+    "false",
+    "test",
+    "seq",
+    "column",
+    "jq",
+    "less",
+    "more",
+    "nl",
+    "od",
+    "xxd",
+    "hexdump",
+    "strings",
+    "journalctl",
+    "dmesg",
+    "sensors",
+    "inxi",
+    "neofetch",
+    "fastfetch",
+    "glxinfo",
+    "vulkaninfo",
+    "clinfo",
+    "rocminfo",
+    "nvidia-smi",
+    "ffprobe",
+    "pdfinfo",
+    "pdftotext",
+    "identify",
+    "exiftool",
+    "mediainfo",
+    "top",
+    "htop",
+    "vmstat",
+    "iostat",
+    "lsof",
+    "ss",
+    "getent",
+    "tty",
+    "sleep",
+    "time",
+    "man",
+    "apropos",
+    "fc-list",
+    "xdg-mime",
+    "zcat",
+    "zgrep",
+    "awk",
+    "sed",
+    "find",
 ];
 
 fn first_word_risk(tokens: &[String]) -> Risk {
@@ -58,8 +199,13 @@ fn first_word_risk(tokens: &[String]) -> Risk {
     while i < tokens.len() && tokens[i].contains('=') && !tokens[i].starts_with('-') {
         i += 1; // env assignments
     }
-    let Some(cmd) = tokens.get(i) else { return Risk::Read };
-    let name = Path::new(cmd).file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let Some(cmd) = tokens.get(i) else {
+        return Risk::Read;
+    };
+    let name = Path::new(cmd)
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
     let args = &tokens[i + 1..];
     let has = |a: &str| args.iter().any(|x| x == a);
     let any_starts = |p: &str| args.iter().any(|x| x.starts_with(p));
@@ -72,27 +218,111 @@ fn first_word_risk(tokens: &[String]) -> Risk {
     match name.as_str() {
         "systemctl" => {
             if has("--user") {
-                return if args.iter().any(|a| ["status", "list-units", "list-timers", "is-active", "show"].contains(&a.as_str())) { Risk::Read } else { Risk::Execute };
+                return if args.iter().any(|a| {
+                    ["status", "list-units", "list-timers", "is-active", "show"]
+                        .contains(&a.as_str())
+                }) {
+                    Risk::Read
+                } else {
+                    Risk::Execute
+                };
             }
-            return if args.iter().any(|a| ["status", "list-units", "list-timers", "is-active", "show", "is-enabled"].contains(&a.as_str())) { Risk::Read } else { Risk::Admin };
+            return if args.iter().any(|a| {
+                [
+                    "status",
+                    "list-units",
+                    "list-timers",
+                    "is-active",
+                    "show",
+                    "is-enabled",
+                ]
+                .contains(&a.as_str())
+            }) {
+                Risk::Read
+            } else {
+                Risk::Admin
+            };
         }
         "apt" | "apt-get" | "aptitude" | "dnf" | "yum" | "pacman" | "zypper" | "snap" => {
-            return if args.iter().any(|a| ["list", "search", "show", "policy", "info", "-Q", "-Ss", "-Si"].contains(&a.as_str())) { Risk::Read } else { Risk::Admin };
+            return if args.iter().any(|a| {
+                [
+                    "list", "search", "show", "policy", "info", "-Q", "-Ss", "-Si",
+                ]
+                .contains(&a.as_str())
+            }) {
+                Risk::Read
+            } else {
+                Risk::Admin
+            };
         }
-        "dpkg" => return if has("-l") || has("-L") || has("-s") || has("--list") { Risk::Read } else { Risk::Admin },
-        "flatpak" => return if has("--system") { Risk::Admin } else if has("list") || has("info") { Risk::Read } else { Risk::Execute },
+        "dpkg" => {
+            return if has("-l") || has("-L") || has("-s") || has("--list") {
+                Risk::Read
+            } else {
+                Risk::Admin
+            }
+        }
+        "flatpak" => {
+            return if has("--system") {
+                Risk::Admin
+            } else if has("list") || has("info") {
+                Risk::Read
+            } else {
+                Risk::Execute
+            }
+        }
         "chmod" | "chown" | "chgrp" => {
-            return if has("-R") || args.iter().any(|a| a.starts_with('/') && !a.starts_with("/home") && !a.starts_with("/tmp")) { Risk::Destructive } else { Risk::Write };
+            return if has("-R")
+                || args.iter().any(|a| {
+                    a.starts_with('/') && !a.starts_with("/home") && !a.starts_with("/tmp")
+                }) {
+                Risk::Destructive
+            } else {
+                Risk::Write
+            };
         }
-        "find" => return if has("-delete") || has("-exec") || has("-execdir") || has("-ok") { Risk::Destructive } else { Risk::Read },
-        "sed" => return if args.iter().any(|a| a.starts_with("-i") || a == "--in-place") { Risk::Write } else { Risk::Read },
-        "awk" | "gawk" => return if args.iter().any(|a| a.contains("system(") || a.contains("| getline") || a.contains("print >")) { Risk::Execute } else { Risk::Read },
+        "find" => {
+            return if has("-delete") || has("-exec") || has("-execdir") || has("-ok") {
+                Risk::Destructive
+            } else {
+                Risk::Read
+            }
+        }
+        "sed" => {
+            return if args
+                .iter()
+                .any(|a| a.starts_with("-i") || a == "--in-place")
+            {
+                Risk::Write
+            } else {
+                Risk::Read
+            }
+        }
+        "awk" | "gawk" => {
+            return if args
+                .iter()
+                .any(|a| a.contains("system(") || a.contains("| getline") || a.contains("print >"))
+            {
+                Risk::Execute
+            } else {
+                Risk::Read
+            }
+        }
         "git" => {
-            let sub = args.iter().find(|a| !a.starts_with('-')).map(|s| s.as_str()).unwrap_or("");
+            let sub = args
+                .iter()
+                .find(|a| !a.starts_with('-'))
+                .map(|s| s.as_str())
+                .unwrap_or("");
             return match sub {
-                "status" | "log" | "diff" | "show" | "branch" | "remote" | "blame" | "rev-parse" | "ls-files" | "describe" | "tag" => Risk::Read,
+                "status" | "log" | "diff" | "show" | "branch" | "remote" | "blame"
+                | "rev-parse" | "ls-files" | "describe" | "tag" => Risk::Read,
                 "clone" | "fetch" | "pull" | "push" | "ls-remote" | "submodule" => {
-                    if sub == "push" && (has("--force") || has("-f") || any_starts("--force")) { Risk::Destructive } else { Risk::Network }
+                    if sub == "push" && (has("--force") || has("-f") || any_starts("--force")) {
+                        Risk::Destructive
+                    } else {
+                        Risk::Network
+                    }
                 }
                 "reset" if has("--hard") => Risk::Destructive,
                 "clean" | "filter-branch" => Risk::Destructive,
@@ -102,14 +332,26 @@ fn first_word_risk(tokens: &[String]) -> Risk {
         }
         "pip" | "pip3" | "npm" | "pnpm" | "yarn" | "cargo" | "gem" | "go" => {
             let sub = args.first().map(|s| s.as_str()).unwrap_or("");
-            return if ["install", "add", "update", "upgrade", "publish", "login"].contains(&sub) { Risk::Network } else { Risk::Execute };
+            return if ["install", "add", "update", "upgrade", "publish", "login"].contains(&sub) {
+                Risk::Network
+            } else {
+                Risk::Execute
+            };
         }
-        "crontab" => return if has("-r") { Risk::Destructive } else if has("-l") { Risk::Read } else { Risk::Write },
-        "mv" | "cp" | "mkdir" | "touch" | "ln" | "tee" | "tar" | "zip" | "unzip" | "gzip" | "gunzip" | "xz" | "7z" | "patch" => {
-            if (name == "mv" || name == "cp")
-                && (has("-f") || has("--force")) {
-                    return Risk::Destructive;
-                }
+        "crontab" => {
+            return if has("-r") {
+                Risk::Destructive
+            } else if has("-l") {
+                Risk::Read
+            } else {
+                Risk::Write
+            }
+        }
+        "mv" | "cp" | "mkdir" | "touch" | "ln" | "tee" | "tar" | "zip" | "unzip" | "gzip"
+        | "gunzip" | "xz" | "7z" | "patch" => {
+            if (name == "mv" || name == "cp") && (has("-f") || has("--force")) {
+                return Risk::Destructive;
+            }
             return Risk::Write;
         }
         _ => {}
@@ -144,26 +386,57 @@ pub fn classify_command(cmd: &str) -> Risk {
     for c in redir.captures_iter(cmd) {
         let target = &c[2];
         if target != "/dev/null" && target != "/dev/stderr" && target != "/dev/stdout" {
-            risk = risk.max(if target.starts_with("/dev/") || target.starts_with("/etc/") || target.starts_with("/boot") { Risk::Admin } else { Risk::Write });
+            risk = risk.max(
+                if target.starts_with("/dev/")
+                    || target.starts_with("/etc/")
+                    || target.starts_with("/boot")
+                {
+                    Risk::Admin
+                } else {
+                    Risk::Write
+                },
+            );
         }
     }
     // Drop redirections (already accounted for) so `2>&1` is not read as a background `&`.
     let strip = regex::Regex::new(r"[0-9]*(>{1,2}|<)&?\s*[^\s;|&]+|[0-9]*>&[0-9-]+").unwrap();
     let without_redirs = strip.replace_all(cmd, " ");
-    let normalized = without_redirs.replace("&&", ";").replace("||", ";").replace(['|', '\n', '&'], ";").replace("$(", ";").replace('`', ";").replace(['(', ')'], " ");
+    let normalized = without_redirs
+        .replace("&&", ";")
+        .replace("||", ";")
+        .replace(['|', '\n', '&'], ";")
+        .replace("$(", ";")
+        .replace('`', ";")
+        .replace(['(', ')'], " ");
     for seg in normalized.split(';') {
         let seg = seg.trim();
         if seg.is_empty() {
             continue;
         }
-        let tokens = shell_words::split(seg).unwrap_or_else(|_| seg.split_whitespace().map(String::from).collect());
+        let tokens = shell_words::split(seg)
+            .unwrap_or_else(|_| seg.split_whitespace().map(String::from).collect());
         let mut r = first_word_risk(&tokens);
         // `xargs rm`, `nohup cmd`, `timeout 5 cmd`, `bash -c`: classify the wrapped command.
         if let Some(first) = tokens.first().map(|s| s.as_str()) {
-            if ["xargs", "nohup", "timeout", "nice", "ionice", "time", "env", "stdbuf", "watch"].contains(&first) {
-                let inner: Vec<String> = tokens.iter().skip(1).skip_while(|t| t.starts_with('-') || t.parse::<f64>().is_ok() || t.contains('=')).cloned().collect();
+            if [
+                "xargs", "nohup", "timeout", "nice", "ionice", "time", "env", "stdbuf", "watch",
+            ]
+            .contains(&first)
+            {
+                let inner: Vec<String> = tokens
+                    .iter()
+                    .skip(1)
+                    .skip_while(|t| {
+                        t.starts_with('-') || t.parse::<f64>().is_ok() || t.contains('=')
+                    })
+                    .cloned()
+                    .collect();
                 r = r.max(first_word_risk(&inner));
-            } else if ["bash", "sh", "zsh", "dash", "fish", "python", "python3", "perl", "ruby", "node"].contains(&first) {
+            } else if [
+                "bash", "sh", "zsh", "dash", "fish", "python", "python3", "perl", "ruby", "node",
+            ]
+            .contains(&first)
+            {
                 r = r.max(Risk::Execute);
                 if let Some(pos) = tokens.iter().position(|t| t == "-c") {
                     if let Some(inner) = tokens.get(pos + 1) {
@@ -182,12 +455,18 @@ pub fn classify_command(cmd: &str) -> Risk {
 // ---------------------------------------------------------------------------
 
 pub fn which(name: &str) -> Option<PathBuf> {
-    std::env::var_os("PATH").and_then(|paths| std::env::split_paths(&paths).map(|d| d.join(name)).find(|p| p.is_file()))
+    std::env::var_os("PATH").and_then(|paths| {
+        std::env::split_paths(&paths)
+            .map(|d| d.join(name))
+            .find(|p| p.is_file())
+    })
 }
 
 /// Environment for child processes: inherit, minus secrets.
 pub fn scrubbed_env() -> Vec<(String, String)> {
-    std::env::vars().filter(|(k, _)| !is_secret_env(k)).collect()
+    std::env::vars()
+        .filter(|(k, _)| !is_secret_env(k))
+        .collect()
 }
 
 pub struct ExecResult {
@@ -208,10 +487,17 @@ impl ExecResult {
         if self.cancelled {
             s.push_str("[CANCELADO — processo encerrado]\n");
         }
-        s.push_str(&format!("exit code: {}  ({} ms)\n", self.code.map(|c| c.to_string()).unwrap_or("-".into()), self.ms));
+        s.push_str(&format!(
+            "exit code: {}  ({} ms)\n",
+            self.code.map(|c| c.to_string()).unwrap_or("-".into()),
+            self.ms
+        ));
         if !self.stdout.is_empty() {
             s.push_str("--- stdout ---\n");
-            s.push_str(&jarvis_core::safety::truncate_middle(&self.stdout, max * 3 / 4));
+            s.push_str(&jarvis_core::safety::truncate_middle(
+                &self.stdout,
+                max * 3 / 4,
+            ));
             if !s.ends_with('\n') {
                 s.push('\n');
             }
@@ -252,12 +538,32 @@ fn kill_group(pid: Option<u32>) {
 }
 
 /// Build the command, wrapped in bubblewrap when enabled and installed.
-pub fn build_command(program: &str, args: &[String], cwd: &Path, ctx: &ToolContext, sandbox: bool) -> Command {
-    let bwrap = if sandbox && ctx.cfg.sandbox.enabled { which("bwrap") } else { None };
+pub fn build_command(
+    program: &str,
+    args: &[String],
+    cwd: &Path,
+    ctx: &ToolContext,
+    sandbox: bool,
+) -> Command {
+    let bwrap = if sandbox && ctx.cfg.sandbox.enabled {
+        which("bwrap")
+    } else {
+        None
+    };
     let mut cmd = match &bwrap {
         Some(b) => {
             let mut c = Command::new(b);
-            c.args(["--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp"]);
+            c.args([
+                "--ro-bind",
+                "/",
+                "/",
+                "--dev",
+                "/dev",
+                "--proc",
+                "/proc",
+                "--tmpfs",
+                "/tmp",
+            ]);
             for w in &ctx.guard.workspace {
                 let w = w.to_string_lossy().to_string();
                 c.args(["--bind", &w, &w]);
@@ -265,7 +571,13 @@ pub fn build_command(program: &str, args: &[String], cwd: &Path, ctx: &ToolConte
             if !ctx.cfg.sandbox.network {
                 c.arg("--unshare-net");
             }
-            c.args(["--die-with-parent", "--chdir", &cwd.to_string_lossy(), "--", program]);
+            c.args([
+                "--die-with-parent",
+                "--chdir",
+                &cwd.to_string_lossy(),
+                "--",
+                program,
+            ]);
             c.args(args);
             c
         }
@@ -289,7 +601,11 @@ pub fn build_command(program: &str, args: &[String], cwd: &Path, ctx: &ToolConte
 }
 
 /// Run to completion with timeout, cancellation and output caps.
-pub async fn run_command(mut cmd: Command, timeout: Duration, ctx: &ToolContext) -> Result<ExecResult> {
+pub async fn run_command(
+    mut cmd: Command,
+    timeout: Duration,
+    ctx: &ToolContext,
+) -> Result<ExecResult> {
     let t0 = Instant::now();
     let mut child = cmd.spawn().context("falha ao iniciar o processo")?;
     let pid = child.id();
@@ -304,9 +620,24 @@ pub async fn run_command(mut cmd: Command, timeout: Duration, ctx: &ToolContext)
     };
     // Kill leftovers in the group (background children) so pipes close.
     kill_group(pid);
-    let stdout = tokio::time::timeout(Duration::from_secs(5), out).await.ok().and_then(|r| r.ok()).unwrap_or_default();
-    let stderr = tokio::time::timeout(Duration::from_secs(5), err).await.ok().and_then(|r| r.ok()).unwrap_or_default();
-    Ok(ExecResult { code: status.and_then(|s| s.code()), stdout, stderr, timed_out, cancelled, ms: t0.elapsed().as_millis() })
+    let stdout = tokio::time::timeout(Duration::from_secs(5), out)
+        .await
+        .ok()
+        .and_then(|r| r.ok())
+        .unwrap_or_default();
+    let stderr = tokio::time::timeout(Duration::from_secs(5), err)
+        .await
+        .ok()
+        .and_then(|r| r.ok())
+        .unwrap_or_default();
+    Ok(ExecResult {
+        code: status.and_then(|s| s.code()),
+        stdout,
+        stderr,
+        timed_out,
+        cancelled,
+        ms: t0.elapsed().as_millis(),
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -327,12 +658,27 @@ fn jobs() -> &'static Mutex<HashMap<String, Job>> {
 }
 
 fn spawn_background(mut cmd: Command, command: &str) -> Result<String> {
-    let mut child = cmd.kill_on_drop(false).spawn().context("falha ao iniciar o processo")?;
+    let mut child = cmd
+        .kill_on_drop(false)
+        .spawn()
+        .context("falha ao iniciar o processo")?;
     let id = format!("job-{}", &uuid::Uuid::new_v4().simple().to_string()[..8]);
     let output = Arc::new(Mutex::new(String::new()));
     let status = Arc::new(Mutex::new(None));
     let pid = child.id();
-    for stream in [child.stdout.take().map(|s| Box::new(s) as Box<dyn AsyncRead + Unpin + Send>), child.stderr.take().map(|s| Box::new(s) as Box<dyn AsyncRead + Unpin + Send>)].into_iter().flatten() {
+    for stream in [
+        child
+            .stdout
+            .take()
+            .map(|s| Box::new(s) as Box<dyn AsyncRead + Unpin + Send>),
+        child
+            .stderr
+            .take()
+            .map(|s| Box::new(s) as Box<dyn AsyncRead + Unpin + Send>),
+    ]
+    .into_iter()
+    .flatten()
+    {
         let o = output.clone();
         tokio::spawn(async move {
             let mut s = stream;
@@ -359,7 +705,16 @@ fn spawn_background(mut cmd: Command, command: &str) -> Result<String> {
         let code = child.wait().await.ok().and_then(|s| s.code()).unwrap_or(-1);
         *st.lock().unwrap() = Some(code);
     });
-    jobs().lock().unwrap().insert(id.clone(), Job { command: command.into(), started: Instant::now(), output, status, pid });
+    jobs().lock().unwrap().insert(
+        id.clone(),
+        Job {
+            command: command.into(),
+            started: Instant::now(),
+            output,
+            status,
+            pid,
+        },
+    );
     Ok(id)
 }
 
@@ -394,7 +749,9 @@ impl Tool for Shell {
             let p = ctx.guard.resolve(cwd);
             match ctx.guard.classify(&p) {
                 PathVerdict::Blocked(r) => ra = ra.deny(r),
-                PathVerdict::Outside => ra = ra.ask(format!("executar fora do workspace ({})", p.display())),
+                PathVerdict::Outside => {
+                    ra = ra.ask(format!("executar fora do workspace ({})", p.display()))
+                }
                 _ => {}
             }
         }
@@ -402,13 +759,21 @@ impl Tool for Shell {
     }
     async fn call(&self, args: Value, ctx: &ToolContext) -> Result<ToolOutput> {
         let command = arg_str(&args, "command").unwrap_or("").to_string();
-        let cwd = arg_str(&args, "cwd").map(|c| ctx.guard.resolve(c)).unwrap_or_else(|| ctx.guard.cwd());
+        let cwd = arg_str(&args, "cwd")
+            .map(|c| ctx.guard.resolve(c))
+            .unwrap_or_else(|| ctx.guard.cwd());
         std::fs::create_dir_all(&cwd).ok();
-        let timeout = Duration::from_secs(arg_u64(&args, "timeout_secs").unwrap_or(ctx.timeout.as_secs()).clamp(1, 3600));
+        let timeout = Duration::from_secs(
+            arg_u64(&args, "timeout_secs")
+                .unwrap_or(ctx.timeout.as_secs())
+                .clamp(1, 3600),
+        );
         let cmd = build_command("bash", &["-c".into(), command.clone()], &cwd, ctx, true);
         if arg_bool(&args, "background").unwrap_or(false) {
             let id = spawn_background(cmd, &command)?;
-            return Ok(ToolOutput::ok(format!("Iniciado em segundo plano: {id}. Use job_status com job_id=\"{id}\".")));
+            return Ok(ToolOutput::ok(format!(
+                "Iniciado em segundo plano: {id}. Use job_status com job_id=\"{id}\"."
+            )));
         }
         let res = run_command(cmd, timeout, ctx).await?;
         let mut out = ToolOutput::ok(res.render(ctx.max_output));
@@ -430,7 +795,10 @@ impl Tool for JobStatus {
     }
     fn assess(&self, args: &Value, _: &ToolContext) -> RiskAssessment {
         if arg_bool(args, "kill").unwrap_or(false) {
-            RiskAssessment::new(Risk::Execute, format!("encerrar {}", arg_str(args, "job_id").unwrap_or("?")))
+            RiskAssessment::new(
+                Risk::Execute,
+                format!("encerrar {}", arg_str(args, "job_id").unwrap_or("?")),
+            )
         } else {
             RiskAssessment::new(Risk::Read, "consultar tarefas em segundo plano")
         }
@@ -443,11 +811,24 @@ impl Tool for JobStatus {
             }
             let list: Vec<String> = jobs
                 .iter()
-                .map(|(id, j)| format!("{id}: {} — {} — {}s", j.command, j.status.lock().unwrap().map(|c| format!("terminou ({c})")).unwrap_or("rodando".into()), j.started.elapsed().as_secs()))
+                .map(|(id, j)| {
+                    format!(
+                        "{id}: {} — {} — {}s",
+                        j.command,
+                        j.status
+                            .lock()
+                            .unwrap()
+                            .map(|c| format!("terminou ({c})"))
+                            .unwrap_or("rodando".into()),
+                        j.started.elapsed().as_secs()
+                    )
+                })
                 .collect();
             return Ok(ToolOutput::ok(list.join("\n")));
         };
-        let Some(job) = jobs.get(id) else { return Ok(ToolOutput::err(format!("job {id} não existe"))) };
+        let Some(job) = jobs.get(id) else {
+            return Ok(ToolOutput::err(format!("job {id} não existe")));
+        };
         if arg_bool(&args, "kill").unwrap_or(false) {
             kill_group(job.pid);
         }
@@ -457,8 +838,18 @@ impl Tool for JobStatus {
         while !out.is_char_boundary(start) {
             start += 1;
         }
-        let status = job.status.lock().unwrap().map(|c| format!("terminou com código {c}")).unwrap_or("rodando".into());
-        Ok(ToolOutput::ok(format!("{id} ({}): {status}, {}s\n--- saída ---\n{}", job.command, job.started.elapsed().as_secs(), &out[start..])))
+        let status = job
+            .status
+            .lock()
+            .unwrap()
+            .map(|c| format!("terminou com código {c}"))
+            .unwrap_or("rodando".into());
+        Ok(ToolOutput::ok(format!(
+            "{id} ({}): {status}, {}s\n--- saída ---\n{}",
+            job.command,
+            job.started.elapsed().as_secs(),
+            &out[start..]
+        )))
     }
 }
 
@@ -467,12 +858,22 @@ impl Tool for JobStatus {
 pub struct SystemInfo;
 
 fn read_trim(p: &str) -> String {
-    std::fs::read_to_string(p).map(|s| s.trim().to_string()).unwrap_or_default()
+    std::fs::read_to_string(p)
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default()
 }
 
 pub async fn quick(cmd: &str, args: &[&str]) -> Option<String> {
-    let out = tokio::time::timeout(Duration::from_secs(5), Command::new(cmd).args(args).stdin(Stdio::null()).output()).await.ok()?.ok()?;
-    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
+    let out = tokio::time::timeout(
+        Duration::from_secs(5),
+        Command::new(cmd).args(args).stdin(Stdio::null()).output(),
+    )
+    .await
+    .ok()?
+    .ok()?;
+    out.status
+        .success()
+        .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
 #[async_trait]
@@ -488,20 +889,67 @@ impl Tool for SystemInfo {
         RiskAssessment::new(Risk::Read, "coletar informações do sistema")
     }
     async fn call(&self, _: Value, ctx: &ToolContext) -> Result<ToolOutput> {
-        let os = read_trim("/etc/os-release").lines().find(|l| l.starts_with("PRETTY_NAME=")).map(|l| l[12..].trim_matches('"').to_string()).unwrap_or_default();
+        let os = read_trim("/etc/os-release")
+            .lines()
+            .find(|l| l.starts_with("PRETTY_NAME="))
+            .map(|l| l[12..].trim_matches('"').to_string())
+            .unwrap_or_default();
         let kernel = read_trim("/proc/sys/kernel/osrelease");
-        let cpu = read_trim("/proc/cpuinfo").lines().find(|l| l.starts_with("model name")).and_then(|l| l.split(':').nth(1)).map(|s| s.trim().to_string()).unwrap_or_default();
+        let cpu = read_trim("/proc/cpuinfo")
+            .lines()
+            .find(|l| l.starts_with("model name"))
+            .and_then(|l| l.split(':').nth(1))
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default();
         let res = jarvis_llm::router::detect_resources();
-        let gpu = quick("sh", &["-c", "lspci 2>/dev/null | grep -Ei 'vga|3d|display'"]).await.unwrap_or_else(|| "(lspci indisponível)".into());
-        let disk = quick("df", &["-h", &ctx.guard.cwd().to_string_lossy()]).await.unwrap_or_default();
+        let gpu = quick(
+            "sh",
+            &["-c", "lspci 2>/dev/null | grep -Ei 'vga|3d|display'"],
+        )
+        .await
+        .unwrap_or_else(|| "(lspci indisponível)".into());
+        let disk = quick("df", &["-h", &ctx.guard.cwd().to_string_lossy()])
+            .await
+            .unwrap_or_default();
         let load = read_trim("/proc/loadavg");
         let progs = [
-            "ffmpeg", "ffprobe", "pandoc", "soffice", "pdftotext", "pdflatex", "xelatex", "tectonic", "latexmk", "tesseract",
-            "convert", "magick", "chromium", "chromium-browser", "google-chrome", "firefox", "llama-server", "whisper-cli",
-            "piper", "espeak-ng", "bwrap", "git", "python3", "docker", "podman", "vulkaninfo",
+            "ffmpeg",
+            "ffprobe",
+            "pandoc",
+            "soffice",
+            "pdftotext",
+            "pdflatex",
+            "xelatex",
+            "tectonic",
+            "latexmk",
+            "tesseract",
+            "convert",
+            "magick",
+            "chromium",
+            "chromium-browser",
+            "google-chrome",
+            "firefox",
+            "llama-server",
+            "whisper-cli",
+            "piper",
+            "espeak-ng",
+            "bwrap",
+            "git",
+            "python3",
+            "docker",
+            "podman",
+            "vulkaninfo",
         ];
-        let found: Vec<&str> = progs.iter().copied().filter(|p| which(p).is_some()).collect();
-        let missing: Vec<&str> = progs.iter().copied().filter(|p| which(p).is_none()).collect();
+        let found: Vec<&str> = progs
+            .iter()
+            .copied()
+            .filter(|p| which(p).is_some())
+            .collect();
+        let missing: Vec<&str> = progs
+            .iter()
+            .copied()
+            .filter(|p| which(p).is_none())
+            .collect();
         Ok(ToolOutput::ok(format!(
             "Sistema: {os}\nKernel: {kernel}\nCPU: {cpu} ({} threads)\nMemória: {} MB livres de {} MB\nCarga: {load}\nGPU: {gpu}\nDisco (workspace):\n{disk}\nProgramas encontrados: {}\nNão encontrados: {}",
             res.cpu_threads,
@@ -528,10 +976,25 @@ impl Tool for ProcessList {
         RiskAssessment::new(Risk::Read, "listar processos")
     }
     async fn call(&self, args: Value, _: &ToolContext) -> Result<ToolOutput> {
-        let key = if arg_str(&args, "sort") == Some("mem") { "-%mem" } else { "-%cpu" };
+        let key = if arg_str(&args, "sort") == Some("mem") {
+            "-%mem"
+        } else {
+            "-%cpu"
+        };
         let limit = arg_u64(&args, "limit").unwrap_or(25) as usize;
-        let out = quick("ps", &["-eo", "pid,user,%cpu,%mem,rss,etime,comm", &format!("--sort={key}")]).await.context("ps falhou")?;
-        Ok(ToolOutput::ok(out.lines().take(limit + 1).collect::<Vec<_>>().join("\n")))
+        let out = quick(
+            "ps",
+            &[
+                "-eo",
+                "pid,user,%cpu,%mem,rss,etime,comm",
+                &format!("--sort={key}"),
+            ],
+        )
+        .await
+        .context("ps falhou")?;
+        Ok(ToolOutput::ok(
+            out.lines().take(limit + 1).collect::<Vec<_>>().join("\n"),
+        ))
     }
 }
 
@@ -550,7 +1013,10 @@ mod tests {
         assert_eq!(classify_command("apt list --installed"), Risk::Read);
         assert_eq!(classify_command("apt install vlc"), Risk::Admin);
         assert_eq!(classify_command("curl https://x"), Risk::Network);
-        assert_eq!(classify_command("find . -name '*.o' -delete"), Risk::Destructive);
+        assert_eq!(
+            classify_command("find . -name '*.o' -delete"),
+            Risk::Destructive
+        );
         assert_eq!(classify_command("python3 script.py"), Risk::Execute);
         assert_eq!(classify_command("bash -c 'rm -rf /'"), Risk::Destructive);
         assert_eq!(classify_command("ls | xargs rm"), Risk::Destructive);

@@ -46,7 +46,10 @@ pub struct Message {
 
 impl Message {
     pub fn text(role: Role, text: impl Into<String>) -> Self {
-        Self { role, parts: vec![Part::Text { text: text.into() }] }
+        Self {
+            role,
+            parts: vec![Part::Text { text: text.into() }],
+        }
     }
     pub fn system(text: impl Into<String>) -> Self {
         Self::text(Role::System, text)
@@ -76,7 +79,12 @@ impl Message {
         self.parts
             .iter()
             .filter_map(|p| match p {
-                Part::ToolCall { id, name, arguments, .. } => Some(ToolCall {
+                Part::ToolCall {
+                    id,
+                    name,
+                    arguments,
+                    ..
+                } => Some(ToolCall {
                     id: id.clone(),
                     name: name.clone(),
                     arguments: arguments.clone(),

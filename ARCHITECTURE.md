@@ -36,7 +36,7 @@ qual modelo está rodando nem quais ferramentas existem: tudo entra por traits.
 |---|---|---|
 | `jarvis-llm` | Tipos de mensagem neutros, trait `Provider`, provedores (OpenAI‑compatível/llama.cpp, Anthropic, Gemini, Scripted para testes), roteador de modelos, gerenciador do `llama-server`. | reqwest, serde |
 | `jarvis-core` | Ciclo do agente, limites, plano, verificação, permissões, taint (injeção de prompt), auditoria, persistência SQLite, memória, configuração, workflows, agendador, trait `Tool`. | jarvis-llm, rusqlite |
-| `jarvis-tools` | Ferramentas reais: arquivos, terminal, web, navegador, documentos, multimídia, memória, MCP, skills, ferramentas customizadas, voz, subagentes. | jarvis-core |
+| `jarvis-tools` | Ferramentas reais: arquivos, terminal, web, navegador, documentos, multimídia, memória, MCP, skills, ferramentas customizadas, voz, subagentes. Também o módulo `runtime`, que monta tudo a partir da configuração (usado pela CLI e pela GUI). | jarvis-core |
 | `jarvis-cli` | Binário `jarvis`: chat, `run`, `resume`, histórico, memória, modelos, workflows, agendamentos, daemon. | todos |
 | `jarvis-gui` | Binário `jarvis-gui` (egui/eframe): chat, histórico, seleção de modelo, plano, progresso, logs, aprovações, cancelamento. | todos |
 
@@ -63,9 +63,14 @@ qual modelo está rodando nem quais ferramentas existem: tudo entra por traits.
    ferramenta sem resultado recebem um resultado sintético “interrompido —
    verifique o estado real”.
 
-Limites (`Limits`): iterações, chamadas ao modelo, chamadas de ferramenta,
+Limites (`[agent]`): iterações, chamadas ao modelo, chamadas de ferramenta,
 tempo total, tokens totais, bytes de saída por ferramenta, timeout por
 ferramenta, rodadas de verificação.
+
+Janela de contexto: as definições de ferramentas são reduzidas às essenciais
+quando ocupariam mais de 35% do contexto (`fit_tools`), e o histórico é
+compactado (saídas antigas encurtadas, turnos antigos removidos sem separar
+chamada e resultado) para caber no orçamento restante (`compact`).
 
 ## Modelos
 
@@ -96,13 +101,27 @@ com `sudo` é `Admin`).
 |---|---|
 | Plano | `update_plan` |
 | Arquivos | `read_file`, `write_file`, `edit_file`, `list_dir`, `glob`, `grep`, `delete_path`, `move_path` |
-| Terminal | `shell`, `system_info`, `process_list` |
+| Terminal | `shell`, `job_status`, `system_info`, `process_list` |
 | Web | `web_search`, `web_fetch`, `browser` (Chromium headless) |
 | Documentos | `doc_read` (PDF, DOCX, XLSX/ODS, CSV, PPTX, ODT, TeX, HTML), `doc_create` (DOCX, PDF, XLSX, CSV, PPTX, TeX, MD), `latex_compile`, `doc_convert` |
-| Multimídia | `media_info`, `media_convert`, `image_edit`, `transcribe`, `speak` |
-| Memória | `memory_save`, `memory_search` |
+| Multimídia | `media_info`, `media_convert`, `image_edit`, `ocr`, `transcribe`, `speak` |
+| Memória | `memory_save`, `memory_search`, `history_search` |
 | Extensões | `mcp__<servidor>__<ferramenta>`, `skill_load`, ferramentas customizadas TOML |
 | Subagentes | `delegate_task` |
+
+## Workflows e agendamentos
+
+- `jarvis_core::workflow`: workflows TOML com passos `tool` (passam pela mesma
+  política de permissão via `Agent::call_tool`) e `task` (sessões filhas).
+- Agendamentos cron ficam na tabela `schedules`; `jarvis daemon` verifica a
+  cada 20 s e executa com aprovador não interativo (só ferramentas
+  pré‑aprovadas; nunca destrutivas ou administrativas).
+
+## Empacotamento
+
+`scripts/build-appimage.sh` compila com `cargo zigbuild` para glibc 2.31,
+monta o AppDir (`packaging/appimage`) e gera o AppImage. O `AppRun` abre a GUI
+sem argumentos e a CLI com argumentos ou sem display.
 
 ## Persistência
 

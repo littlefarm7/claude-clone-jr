@@ -50,7 +50,10 @@ impl SessionStatus {
         }
     }
     pub fn resumable(&self) -> bool {
-        matches!(self, Self::Running | Self::Interrupted | Self::LimitReached | Self::Failed | Self::Cancelled)
+        matches!(
+            self,
+            Self::Running | Self::Interrupted | Self::LimitReached | Self::Failed | Self::Cancelled
+        )
     }
 }
 
@@ -169,12 +172,20 @@ impl Store {
                 key TEXT PRIMARY KEY, granted_at TEXT NOT NULL);
             "#,
         )?;
-        Ok(Self { conn: Mutex::new(conn) })
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
     }
 
     // ---- sessions ---------------------------------------------------------
 
-    pub fn create_session(&self, title: &str, task: &str, model: &str, parent: Option<&str>) -> Result<String> {
+    pub fn create_session(
+        &self,
+        title: &str,
+        task: &str,
+        model: &str,
+        parent: Option<&str>,
+    ) -> Result<String> {
         let id = uuid::Uuid::new_v4().to_string();
         let t = now();
         self.conn.lock().unwrap().execute(
@@ -194,7 +205,14 @@ impl Store {
         Ok(id)
     }
 
-    pub fn update_session(&self, id: &str, status: SessionStatus, plan: &Plan, state: &SessionState, summary: Option<&str>) -> Result<()> {
+    pub fn update_session(
+        &self,
+        id: &str,
+        status: SessionStatus,
+        plan: &Plan,
+        state: &SessionState,
+        summary: Option<&str>,
+    ) -> Result<()> {
         self.conn.lock().unwrap().execute(
             "UPDATE sessions SET status=?2, plan=?3, state=?4, summary=COALESCE(?5, summary), updated_at=?6 WHERE id=?1",
             params![id, status.as_str(), serde_json::to_string(plan)?, serde_json::to_string(state)?, summary, now()],
@@ -203,7 +221,10 @@ impl Store {
     }
 
     pub fn set_session_model(&self, id: &str, model: &str) -> Result<()> {
-        self.conn.lock().unwrap().execute("UPDATE sessions SET model=?2 WHERE id=?1", params![id, model])?;
+        self.conn.lock().unwrap().execute(
+            "UPDATE sessions SET model=?2 WHERE id=?1",
+            params![id, model],
+        )?;
         Ok(())
     }
 
@@ -233,8 +254,14 @@ impl Store {
             "SELECT id,title,task,status,model,parent_id,plan,state,summary,created_at,updated_at
              FROM sessions WHERE id LIKE ?1 LIMIT 2",
         )?;
-        let rows: Vec<SessionRecord> = stmt.query_map([pattern], Self::row_to_session)?.collect::<rusqlite::Result<_>>()?;
-        Ok(if rows.len() == 1 { rows.into_iter().next() } else { None })
+        let rows: Vec<SessionRecord> = stmt
+            .query_map([pattern], Self::row_to_session)?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(if rows.len() == 1 {
+            rows.into_iter().next()
+        } else {
+            None
+        })
     }
 
     pub fn list_sessions(&self, limit: usize) -> Result<Vec<SessionRecord>> {
@@ -243,7 +270,9 @@ impl Store {
             "SELECT id,title,task,status,model,parent_id,plan,state,summary,created_at,updated_at
              FROM sessions ORDER BY updated_at DESC LIMIT ?1",
         )?;
-        let rows = stmt.query_map([limit as i64], Self::row_to_session)?.collect::<rusqlite::Result<_>>()?;
+        let rows = stmt
+            .query_map([limit as i64], Self::row_to_session)?
+            .collect::<rusqlite::Result<_>>()?;
         Ok(rows)
     }
 
@@ -255,23 +284,36 @@ impl Store {
 
     /// Mark sessions left `running` by a crashed process as interrupted.
     pub fn mark_stale_running(&self) -> Result<usize> {
-        Ok(self.conn.lock().unwrap().execute("UPDATE sessions SET status='interrupted' WHERE status='running'", [])?)
+        Ok(self.conn.lock().unwrap().execute(
+            "UPDATE sessions SET status='interrupted' WHERE status='running'",
+            [],
+        )?)
     }
 
     // ---- messages ---------------------------------------------------------
 
     pub fn append_message(&self, session: &str, msg: &Message) -> Result<()> {
         let c = self.conn.lock().unwrap();
-        let seq: i64 = c.query_row("SELECT COALESCE(MAX(seq),-1)+1 FROM messages WHERE session_id=?1", [session], |r| r.get(0))?;
+        let seq: i64 = c.query_row(
+            "SELECT COALESCE(MAX(seq),-1)+1 FROM messages WHERE session_id=?1",
+            [session],
+            |r| r.get(0),
+        )?;
         c.execute(
             "INSERT INTO messages(session_id,seq,body,created_at) VALUES(?1,?2,?3,?4)",
             params![session, seq, serde_json::to_string(msg)?, now()],
         )?;
         let text = msg.text_content();
         if !text.trim().is_empty() {
-            c.execute("INSERT INTO messages_fts(session_id,text) VALUES(?1,?2)", params![session, text])?;
+            c.execute(
+                "INSERT INTO messages_fts(session_id,text) VALUES(?1,?2)",
+                params![session, text],
+            )?;
         }
-        c.execute("UPDATE sessions SET updated_at=?2 WHERE id=?1", params![session, now()])?;
+        c.execute(
+            "UPDATE sessions SET updated_at=?2 WHERE id=?1",
+            params![session, now()],
+        )?;
         Ok(())
     }
 
@@ -294,14 +336,23 @@ impl Store {
              WHERE messages_fts MATCH ?1 ORDER BY rank LIMIT ?2",
         )?;
         let rows = stmt
-            .query_map(params![fts_query(query), limit as i64], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .query_map(params![fts_query(query), limit as i64], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })?
             .collect::<rusqlite::Result<_>>()?;
         Ok(rows)
     }
 
     // ---- memories ---------------------------------------------------------
 
-    pub fn add_memory(&self, kind: &str, content: &str, tags: &str, source: &str, embedding: Option<&[f32]>) -> Result<i64> {
+    pub fn add_memory(
+        &self,
+        kind: &str,
+        content: &str,
+        tags: &str,
+        source: &str,
+        embedding: Option<&[f32]>,
+    ) -> Result<i64> {
         let c = self.conn.lock().unwrap();
         c.execute(
             "INSERT INTO memories(kind,content,tags,source,embedding,created_at) VALUES(?1,?2,?3,?4,?5,?6)",
@@ -325,12 +376,20 @@ impl Store {
 
     pub fn list_memories(&self) -> Result<Vec<MemoryRecord>> {
         let c = self.conn.lock().unwrap();
-        let mut stmt = c.prepare("SELECT id,kind,content,tags,source,embedding,created_at FROM memories ORDER BY id")?;
-        let rows = stmt.query_map([], Self::row_to_memory)?.collect::<rusqlite::Result<_>>()?;
+        let mut stmt = c.prepare(
+            "SELECT id,kind,content,tags,source,embedding,created_at FROM memories ORDER BY id",
+        )?;
+        let rows = stmt
+            .query_map([], Self::row_to_memory)?
+            .collect::<rusqlite::Result<_>>()?;
         Ok(rows)
     }
 
-    pub fn search_memories_fts(&self, query: &str, limit: usize) -> Result<Vec<(MemoryRecord, f64)>> {
+    pub fn search_memories_fts(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<(MemoryRecord, f64)>> {
         let c = self.conn.lock().unwrap();
         let mut stmt = c.prepare(
             "SELECT m.id,m.kind,m.content,m.tags,m.source,m.embedding,m.created_at, bm25(memories_fts)
@@ -338,22 +397,40 @@ impl Store {
              WHERE memories_fts MATCH ?1 ORDER BY bm25(memories_fts) LIMIT ?2",
         )?;
         let rows = stmt
-            .query_map(params![fts_query(query), limit as i64], |r| Ok((Self::row_to_memory(r)?, r.get::<_, f64>(7)?)))?
+            .query_map(params![fts_query(query), limit as i64], |r| {
+                Ok((Self::row_to_memory(r)?, r.get::<_, f64>(7)?))
+            })?
             .collect::<rusqlite::Result<_>>()?;
         Ok(rows)
     }
 
     pub fn delete_memory(&self, id: i64) -> Result<bool> {
-        Ok(self.conn.lock().unwrap().execute("DELETE FROM memories WHERE id=?1", [id])? > 0)
+        Ok(self
+            .conn
+            .lock()
+            .unwrap()
+            .execute("DELETE FROM memories WHERE id=?1", [id])?
+            > 0)
     }
 
     pub fn clear_memories(&self) -> Result<usize> {
-        Ok(self.conn.lock().unwrap().execute("DELETE FROM memories", [])?)
+        Ok(self
+            .conn
+            .lock()
+            .unwrap()
+            .execute("DELETE FROM memories", [])?)
     }
 
     // ---- schedules --------------------------------------------------------
 
-    pub fn add_schedule(&self, name: &str, cron: &str, kind: &str, payload: &str, allowed_tools: &str) -> Result<i64> {
+    pub fn add_schedule(
+        &self,
+        name: &str,
+        cron: &str,
+        kind: &str,
+        payload: &str,
+        allowed_tools: &str,
+    ) -> Result<i64> {
         let c = self.conn.lock().unwrap();
         c.execute(
             "INSERT INTO schedules(name,cron,kind,payload,allowed_tools) VALUES(?1,?2,?3,?4,?5)",
@@ -383,31 +460,48 @@ impl Store {
     }
 
     pub fn set_schedule_last_run(&self, id: i64, when: &str) -> Result<()> {
-        self.conn.lock().unwrap().execute("UPDATE schedules SET last_run=?2 WHERE id=?1", params![id, when])?;
+        self.conn.lock().unwrap().execute(
+            "UPDATE schedules SET last_run=?2 WHERE id=?1",
+            params![id, when],
+        )?;
         Ok(())
     }
 
     pub fn delete_schedule(&self, id: i64) -> Result<bool> {
-        Ok(self.conn.lock().unwrap().execute("DELETE FROM schedules WHERE id=?1", [id])? > 0)
+        Ok(self
+            .conn
+            .lock()
+            .unwrap()
+            .execute("DELETE FROM schedules WHERE id=?1", [id])?
+            > 0)
     }
 
     // ---- consents ---------------------------------------------------------
 
     pub fn has_consent(&self, key: &str) -> Result<bool> {
         let c = self.conn.lock().unwrap();
-        Ok(c.query_row("SELECT 1 FROM consents WHERE key=?1", [key], |_| Ok(())).optional()?.is_some())
+        Ok(
+            c.query_row("SELECT 1 FROM consents WHERE key=?1", [key], |_| Ok(()))
+                .optional()?
+                .is_some(),
+        )
     }
 
     pub fn grant_consent(&self, key: &str) -> Result<()> {
-        self.conn
-            .lock()
-            .unwrap()
-            .execute("INSERT OR REPLACE INTO consents(key,granted_at) VALUES(?1,?2)", params![key, now()])?;
+        self.conn.lock().unwrap().execute(
+            "INSERT OR REPLACE INTO consents(key,granted_at) VALUES(?1,?2)",
+            params![key, now()],
+        )?;
         Ok(())
     }
 
     pub fn revoke_consent(&self, key: &str) -> Result<bool> {
-        Ok(self.conn.lock().unwrap().execute("DELETE FROM consents WHERE key=?1", [key])? > 0)
+        Ok(self
+            .conn
+            .lock()
+            .unwrap()
+            .execute("DELETE FROM consents WHERE key=?1", [key])?
+            > 0)
     }
 }
 
@@ -431,7 +525,9 @@ pub fn f32_to_bytes(v: &[f32]) -> Vec<u8> {
 }
 
 pub fn bytes_to_f32(b: &[u8]) -> Vec<f32> {
-    b.chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect()
+    b.chunks_exact(4)
+        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+        .collect()
 }
 
 #[cfg(test)]
@@ -442,14 +538,18 @@ mod tests {
     fn sessions_messages_and_search() {
         let s = Store::in_memory().unwrap();
         let id = s.create_session("t", "task", "m", None).unwrap();
-        s.append_message(&id, &Message::user("procure o relatório financeiro")).unwrap();
+        s.append_message(&id, &Message::user("procure o relatório financeiro"))
+            .unwrap();
         s.append_message(&id, &Message::assistant("ok")).unwrap();
         assert_eq!(s.messages(&id).unwrap().len(), 2);
         assert_eq!(s.search_history("financeiro", 5).unwrap().len(), 1);
         let rec = s.get_session(&id[..8]).unwrap().unwrap();
         assert_eq!(rec.status, SessionStatus::Running);
         assert_eq!(s.mark_stale_running().unwrap(), 1);
-        assert_eq!(s.get_session(&id).unwrap().unwrap().status, SessionStatus::Interrupted);
+        assert_eq!(
+            s.get_session(&id).unwrap().unwrap().status,
+            SessionStatus::Interrupted
+        );
         assert!(s.delete_session(&id).unwrap());
         assert!(s.messages(&id).unwrap().is_empty());
     }
@@ -457,8 +557,23 @@ mod tests {
     #[test]
     fn memories_fts_and_delete() {
         let s = Store::in_memory().unwrap();
-        let a = s.add_memory("preference", "O usuário prefere respostas em português", "idioma", "user", Some(&[1.0, 0.0])).unwrap();
-        s.add_memory("fact", "O servidor de casa usa Debian", "infra", "user", None).unwrap();
+        let a = s
+            .add_memory(
+                "preference",
+                "O usuário prefere respostas em português",
+                "idioma",
+                "user",
+                Some(&[1.0, 0.0]),
+            )
+            .unwrap();
+        s.add_memory(
+            "fact",
+            "O servidor de casa usa Debian",
+            "infra",
+            "user",
+            None,
+        )
+        .unwrap();
         let r = s.search_memories_fts("português idioma", 5).unwrap();
         assert_eq!(r.len(), 1);
         assert_eq!(r[0].0.embedding.as_deref(), Some(&[1.0f32, 0.0][..]));

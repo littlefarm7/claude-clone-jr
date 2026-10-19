@@ -54,7 +54,11 @@ impl Plan {
                     StepStatus::Skipped => "[-]",
                     StepStatus::Failed => "[!]",
                 };
-                let note = s.note.as_deref().map(|n| format!(" — {n}")).unwrap_or_default();
+                let note = s
+                    .note
+                    .as_deref()
+                    .map(|n| format!(" — {n}"))
+                    .unwrap_or_default();
                 format!("{mark} {}. {}{note}", i + 1, s.title)
             })
             .collect::<Vec<_>>()
