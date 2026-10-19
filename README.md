@@ -1,14 +1,14 @@
-# Jarvis Core
+# Claudio Code
 
 Agente de IA autônomo, local-first e open source (Apache-2.0), escrito em Rust.
 Roda em **Linux, Windows e macOS**. Ele **planeja, executa e verifica** tarefas
 usando ferramentas reais: arquivos, terminal, web, navegador, documentos (PDF, DOCX, XLSX, CSV, PPTX, LaTeX),
 áudio, vídeo, imagens, memória persistente, workflows, agendamentos, MCP e skills.
-A CLI `jarvis` e a interface gráfica `jarvis-gui` usam o mesmo núcleo.
+A CLI `claudio` e a interface gráfica `claudio-gui` usam o mesmo núcleo.
 
-![Interface gráfica: tarefa concluída e verificada](docs/img/gui-tarefa-verificada.png)
+![Interface gráfica: tarefa concluída e verificada](docs/img/chat-tarefa-verificada.png)
 
-- **Modelos locais** via llama.cpp (`llama-server`), sem conta e sem custo por uso. O Jarvis inicia o servidor sozinho.
+- **Modelos locais** via llama.cpp (`llama-server`), sem conta e sem custo por uso. O Claudio inicia o servidor sozinho.
 - **Modelos por API** (Anthropic, Gemini, OpenAI e compatíveis), opcionais, com consentimento explícito.
 - **Segurança**: permissões por ferramenta e por risco, aprovação para ações de escrita/execução/destrutivas,
   `sudo` nunca aprovado automaticamente, limites de diretório, isolamento com bubblewrap, proteção contra injeção
@@ -24,11 +24,11 @@ Baixe o pacote do seu sistema na página de
 
 | Sistema | Arquivo | Como usar |
 |---|---|---|
-| Linux (LMDE, Debian, Ubuntu, Fedora…) | `Jarvis_Core-<versão>-x86_64.AppImage` | `chmod +x` e execute. Sem argumentos abre a GUI; com argumentos é a CLI. |
-| Linux (binários soltos) | `Jarvis_Core-<versão>-linux-x86_64.tar.gz` | `jarvis` e `jarvis-gui` |
-| Windows 10/11 (x64) | `Jarvis_Core-<versão>-windows-x86_64.zip` | extraia; abra `jarvis-gui.exe`; CLI: `.\jarvis.exe` |
-| macOS 11+ (Apple Silicon e Intel) | `Jarvis_Core-<versão>-macos-universal.dmg` | arraste **Jarvis Core** para Aplicativos |
-| macOS (CLI) | `Jarvis_Core-<versão>-macos-universal.tar.gz` | `jarvis` e `jarvis-gui` |
+| Linux (LMDE, Debian, Ubuntu, Fedora…) | `Claudio_Code-<versão>-x86_64.AppImage` | `chmod +x` e execute. Sem argumentos abre a GUI; com argumentos é a CLI. |
+| Linux (binários soltos) | `Claudio_Code-<versão>-linux-x86_64.tar.gz` | `claudio` e `claudio-gui` |
+| Windows 10/11 (x64) | `Claudio_Code-<versão>-windows-x86_64.zip` | extraia; abra `claudio-gui.exe`; CLI: `.\claudio.exe` |
+| macOS 11+ (Apple Silicon e Intel) | `Claudio_Code-<versão>-macos-universal.dmg` | arraste **Claudio Code** para Aplicativos |
+| macOS (CLI) | `Claudio_Code-<versão>-macos-universal.tar.gz` | `claudio` e `claudio-gui` |
 
 Observações:
 1. **Linux:** o AppImage exige glibc 2.31 ou mais nova. Sem FUSE, use `--appimage-extract-and-run`
@@ -36,8 +36,8 @@ Observações:
 2. **Windows:** o SmartScreen pode avisar (executável sem assinatura comercial). Clique em
    “Mais informações” → “Executar assim mesmo”.
 3. **macOS:** o app tem assinatura ad hoc, sem notarização. Na primeira vez, clique com o botão direito
-   em **Jarvis Core** → **Abrir**, ou rode `xattr -dr com.apple.quarantine "/Applications/Jarvis Core.app"`.
-   A CLI fica em `/Applications/Jarvis Core.app/Contents/MacOS/jarvis`.
+   em **Claudio Code** → **Abrir**, ou rode `xattr -dr com.apple.quarantine "/Applications/Claudio Code.app"`.
+   A CLI fica em `/Applications/Claudio Code.app/Contents/MacOS/claudio`.
 4. Verifique a integridade com `SHA256SUMS.txt`.
 
 ### Compilar a partir do código
@@ -60,41 +60,74 @@ Observações:
 | Microfone | arecord / ffmpeg | ffmpeg (AVFoundation) | ffmpeg (DirectShow) |
 | Navegador headless | Chromium/Chrome | Chrome/Chromium/Edge | Edge/Chrome |
 | PDF | poppler, ou leitor interno | poppler (brew), ou leitor interno | poppler, ou leitor interno |
-| Configuração | `~/.config/jarvis` | `~/Library/Application Support/jarvis` | `%APPDATA%\jarvis` |
+| Configuração | `~/.config/claudio` | `~/Library/Application Support/claudio` | `%APPDATA%\claudio` |
 
 ## Primeiros passos
 
-1. Crie a configuração: `jarvis config init` (veja o caminho com `jarvis config path`).
-2. Verifique o ambiente: `jarvis doctor`.
-3. Configure um modelo local (veja [docs/MODELOS-LOCAIS.md](docs/MODELOS-LOCAIS.md)):
-   - compile o llama.cpp;
-   - baixe um GGUF, por exemplo Qwen2.5‑7B‑Instruct Q4_K_M;
-   - em `[[models]]` do modelo `local`, defina `gguf_path = "~/modelos/arquivo.gguf"`.
-4. Confira: `jarvis models`.
-5. Use:
-   - interface gráfica: `jarvis-gui`;
-   - conversa no terminal: `jarvis`;
-   - tarefa única: `jarvis run "organize os PDFs de ~/jarvis-work/entrada por ano"`.
+1. Abra o aplicativo (`claudio-gui`, ou o AppImage/app/zip do seu sistema).
+2. Clique em **⚙ Configurações** e escolha **uma** das opções abaixo.
 
-Por padrão o agente só grava dentro de `~/jarvis-work`. Para liberar outra pasta, acrescente-a em
-`permissions.workspace_roots`.
+### Opção A — usar uma API de IA
+
+1. Aba **Modelos por API**.
+2. Escolha o provedor: Anthropic (Claude), OpenAI, Google Gemini, OpenRouter, Groq, Ollama, LM Studio
+   ou outro compatível com OpenAI.
+3. Confira o modelo (há sugestões) e cole a **chave de API** (o link “obter chave” abre a página do provedor).
+4. Clique em **Testar conexão**. Se aparecer “✔ respondeu”, clique em **Adicionar** e depois **Salvar**.
+
+A chave fica num arquivo separado e protegido (`secrets/api_keys.toml`, permissão 0600), nunca no
+`config.toml`, e as ferramentas do agente não conseguem lê-lo. Na primeira tarefa com um provedor remoto,
+o Claudio pede sua autorização para enviar dados.
+
+![Configurações: modelos por API](docs/img/configuracoes-api.png)
+
+### Opção B — baixar um modelo local (sem conta, sem custo, sem internet depois)
+
+1. Aba **Modelos locais**.
+2. Em **1. Motor local**, clique em **Instalar llama.cpp** (baixa a versão oficial do GitHub).
+   Escolha **GPU (Vulkan)** se tiver placa AMD/Intel/NVIDIA; no macOS a GPU (Metal) já vem ativada.
+   Se você já compilou o llama.cpp, indique o caminho do `llama-server`.
+3. Em **2. Escolha um modelo**, clique em **Baixar** no modelo desejado. A tela mostra o tamanho e se
+   cabe na memória do computador. O download pode ser pausado e retomado, e é verificado (SHA‑256).
+   Recomendado para 16 GB de RAM: **Qwen2.5 7B Instruct**.
+4. Clique em **Salvar**. O Claudio inicia o modelo sozinho quando você enviar uma mensagem.
+
+Também é possível baixar de qualquer URL `.gguf` ou usar um arquivo `.gguf` que já está no computador.
+
+![Configurações: modelos locais](docs/img/configuracoes-modelos-locais.png)
+
+### Pelo terminal (mesmas opções)
+
+```bash
+claudio models providers                       # provedores de API
+claudio models add-api --provider anthropic --default   # pede a chave sem mostrá-la
+claudio models test claude                     # confere se responde
+claudio llama-install --variant vulkan         # instala o llama-server (cpu ou vulkan)
+claudio models catalog                         # modelos locais recomendados
+claudio models download qwen2.5-7b            # baixa e passa a usar
+claudio models use-file ~/modelos/meu.gguf     # usa um .gguf existente
+claudio models use claude                      # troca o modelo padrão
+```
+
+Depois: `claudio doctor` mostra o que está instalado, e `claudio` abre a conversa no terminal.
+Por padrão o agente só grava dentro de `~/claudio-work` (altere em **Configurações → Geral**).
 
 ## Comandos principais
 
 | Comando | O que faz |
 |---|---|
-| `jarvis` / `jarvis chat` | Conversa interativa (`/modelo`, `/nova`, `/plano`, `/sair`) |
-| `jarvis run "tarefa"` | Executa até concluir e verificar; `--detach` roda em segundo plano |
-| `jarvis resume <id>` | Retoma uma sessão interrompida ou parada por limite |
-| `jarvis sessions` · `show <id>` · `history <texto>` | Histórico |
-| `jarvis memory list/add/search/delete/clear` | Memória controlada pelo usuário |
-| `jarvis models` · `serve <gguf>` | Modelos e servidor local |
-| `jarvis workflow arquivo.toml` | Executa um workflow |
-| `jarvis schedule add/list/delete` · `daemon` | Agendamentos (cron) |
-| `jarvis voice transcribe/say/listen` | Voz local |
-| `jarvis audit verify/tail` | Auditoria |
-| `jarvis consent list/revoke` | Consentimentos de provedores remotos |
-| `jarvis tools` · `doctor` | Ferramentas e diagnóstico |
+| `claudio` / `claudio chat` | Conversa interativa (`/modelo`, `/nova`, `/plano`, `/sair`) |
+| `claudio run "tarefa"` | Executa até concluir e verificar; `--detach` roda em segundo plano |
+| `claudio resume <id>` | Retoma uma sessão interrompida ou parada por limite |
+| `claudio sessions` · `show <id>` · `history <texto>` | Histórico |
+| `claudio memory list/add/search/delete/clear` | Memória controlada pelo usuário |
+| `claudio models` · `serve <gguf>` | Modelos e servidor local |
+| `claudio workflow arquivo.toml` | Executa um workflow |
+| `claudio schedule add/list/delete` · `daemon` | Agendamentos (cron) |
+| `claudio voice transcribe/say/listen` | Voz local |
+| `claudio audit verify/tail` | Auditoria |
+| `claudio consent list/revoke` | Consentimentos de provedores remotos |
+| `claudio tools` · `doctor` | Ferramentas e diagnóstico |
 
 Opções globais: `--model <nome>`, `--yes` (aprova escrita/execução/rede; nunca ações destrutivas ou
 administrativas), `--non-interactive`, `--json`, `--config <arquivo>`.
@@ -129,7 +162,7 @@ Modelos com contexto pequeno recebem só as ferramentas essenciais, para caber n
 ## Modelos por API (opcional)
 
 Defina as chaves por variável de ambiente (recomendado): `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`.
-No primeiro uso de cada provedor remoto o Jarvis pede consentimento. Com `privacy.local_only = true`, nenhum
+No primeiro uso de cada provedor remoto o Claudio pede consentimento. Com `privacy.local_only = true`, nenhum
 provedor remoto é usado. A seleção automática considera o tipo de tarefa (`fast`, `smart`, `code`, `long`,
 `vision`), a disponibilidade (chave, servidor local respondendo) e a RAM livre frente ao tamanho do GGUF.
 
@@ -137,9 +170,9 @@ provedor remoto é usado. A seleção automática considera o tipo de tarefa (`f
 
 - Workflows TOML com passos de ferramenta e de tarefa, variáveis e ferramentas pré‑aprovadas:
   veja [examples/workflows](examples/workflows).
-- Agendamentos: `jarvis schedule add --name diario --cron "0 8 * * 1-5" --task "resuma meus e-mails exportados"`.
-- O `jarvis daemon` executa os agendamentos. Para iniciar com a sessão do usuário:
-  `cp packaging/systemd/jarvis-daemon.service ~/.config/systemd/user/ && systemctl --user enable --now jarvis-daemon`.
+- Agendamentos: `claudio schedule add --name diario --cron "0 8 * * 1-5" --task "resuma meus e-mails exportados"`.
+- O `claudio daemon` executa os agendamentos. Para iniciar com a sessão do usuário:
+  `cp packaging/systemd/claudio-daemon.service ~/.config/systemd/user/ && systemctl --user enable --now claudio-daemon`.
 - O daemon não abre portas de rede.
 
 ## Testes
@@ -150,14 +183,14 @@ cargo test --workspace
 
 Os testes usam ferramentas reais (processos, arquivos, ffmpeg, Chromium, pandoc, LibreOffice, Tesseract,
 pdflatex, bubblewrap, espeak-ng quando instalados) e um servidor de modelo scriptado em Python
-([tests/fixtures/mock_llm.py](tests/fixtures/mock_llm.py)) para rodar o binário `jarvis` de ponta a ponta.
+([tests/fixtures/mock_llm.py](tests/fixtures/mock_llm.py)) para rodar o binário `claudio` de ponta a ponta.
 Testes que dependem de algo ausente imprimem “ignorado” e passam.
 
 Testes opcionais com llama.cpp real:
 
 ```bash
 python3 -I scripts/make_tiny_gguf.py ~/llama.cpp /tmp/tiny.gguf    # modelo minúsculo de pesos aleatórios
-JARVIS_TEST_GGUF=/tmp/tiny.gguf cargo test -p jarvis-tools --test local_llama
+CLAUDIO_TEST_GGUF=/tmp/tiny.gguf cargo test -p claudio-tools --test local_llama
 ```
 
 ## Estado atual e limitações
@@ -177,3 +210,8 @@ Os testes automatizados rodam no CI em Linux, macOS e Windows a cada commit. Res
 ## Licença
 
 Apache-2.0. Veja [LICENSE](LICENSE).
+
+## Nome
+
+Até a versão 0.2 o projeto se chamava “Jarvis Core”. Na primeira execução da 0.3, as pastas antigas de
+configuração e dados (`jarvis`) são movidas para `claudio` automaticamente.

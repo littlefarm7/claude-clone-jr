@@ -1,20 +1,20 @@
-# Arquitetura — Jarvis Core
+# Arquitetura — Claudio Code
 
-Jarvis Core é um agente autônomo de uso geral escrito em Rust. A CLI (`jarvis`)
-e a interface gráfica (`jarvis-gui`) usam o mesmo núcleo. O núcleo não sabe
+Claudio Code é um agente autônomo de uso geral escrito em Rust. A CLI (`claudio`)
+e a interface gráfica (`claudio-gui`) usam o mesmo núcleo. O núcleo não sabe
 qual modelo está rodando nem quais ferramentas existem: tudo entra por traits.
 
 ## Visão geral
 
 ```
             +-------------------+      +--------------------+
-            |   jarvis (CLI)    |      |  jarvis-gui (egui) |
+            |   claudio (CLI)    |      |  claudio-gui (egui) |
             +---------+---------+      +----------+---------+
                       |   Approver / EventSink    |
                       +-------------+-------------+
                                     |
                      +--------------v---------------+
-                     |          jarvis-core         |
+                     |          claudio-code         |
                      |  Agent (plan/exec/verify)    |
                      |  Permissions + Taint + Audit |
                      |  Store (SQLite) + Memory     |
@@ -22,7 +22,7 @@ qual modelo está rodando nem quais ferramentas existem: tudo entra por traits.
                      +------+----------------+------+
                             |                |
                +------------v----+    +------v---------------+
-               |   jarvis-llm    |    |    jarvis-tools      |
+               |   claudio-llm    |    |    claudio-tools      |
                | Provider trait  |    | fs, shell, web, docs |
                | llama.cpp/OpenAI|    | media, memory, mcp,  |
                | Anthropic,Gemini|    | skills, custom, voice|
@@ -34,11 +34,11 @@ qual modelo está rodando nem quais ferramentas existem: tudo entra por traits.
 
 | Crate | Papel | Depende de |
 |---|---|---|
-| `jarvis-llm` | Tipos de mensagem neutros, trait `Provider`, provedores (OpenAI‑compatível/llama.cpp, Anthropic, Gemini, Scripted para testes), roteador de modelos, gerenciador do `llama-server`. | reqwest, serde |
-| `jarvis-core` | Ciclo do agente, limites, plano, verificação, permissões, taint (injeção de prompt), auditoria, persistência SQLite, memória, configuração, workflows, agendador, trait `Tool`. | jarvis-llm, rusqlite |
-| `jarvis-tools` | Ferramentas reais: arquivos, terminal, web, navegador, documentos, multimídia, memória, MCP, skills, ferramentas customizadas, voz, subagentes. Também o módulo `runtime`, que monta tudo a partir da configuração (usado pela CLI e pela GUI). | jarvis-core |
-| `jarvis-cli` | Binário `jarvis`: chat, `run`, `resume`, histórico, memória, modelos, workflows, agendamentos, daemon. | todos |
-| `jarvis-gui` | Binário `jarvis-gui` (egui/eframe): chat, histórico, seleção de modelo, plano, progresso, logs, aprovações, cancelamento. | todos |
+| `claudio-llm` | Tipos de mensagem neutros, trait `Provider`, provedores (OpenAI‑compatível/llama.cpp, Anthropic, Gemini, Scripted para testes), roteador de modelos, gerenciador do `llama-server`. | reqwest, serde |
+| `claudio-code` | Ciclo do agente, limites, plano, verificação, permissões, taint (injeção de prompt), auditoria, persistência SQLite, memória, configuração, workflows, agendador, trait `Tool`. | claudio-llm, rusqlite |
+| `claudio-tools` | Ferramentas reais: arquivos, terminal, web, navegador, documentos, multimídia, memória, MCP, skills, ferramentas customizadas, voz, subagentes. Também o módulo `runtime`, que monta tudo a partir da configuração (usado pela CLI e pela GUI). | claudio-code |
+| `claudio-cli` | Binário `claudio`: chat, `run`, `resume`, histórico, memória, modelos, workflows, agendamentos, daemon. | todos |
+| `claudio-gui` | Binário `claudio-gui` (egui/eframe): chat, histórico, seleção de modelo, plano, progresso, logs, aprovações, cancelamento. | todos |
 
 ## Ciclo do agente
 
@@ -59,7 +59,7 @@ qual modelo está rodando nem quais ferramentas existem: tudo entra por traits.
    - `FAIL` volta para a execução (correção de erros).
 4. **Persistir e retomar** – mensagens, plano, contadores e status são
    gravados no SQLite a cada passo. Sessões interrompidas ficam `running` ou
-   `interrupted` e podem ser retomadas com `jarvis resume <id>`; chamadas de
+   `interrupted` e podem ser retomadas com `claudio resume <id>`; chamadas de
    ferramenta sem resultado recebem um resultado sintético “interrompido —
    verifique o estado real”.
 
@@ -111,15 +111,15 @@ com `sudo` é `Admin`).
 
 ## Workflows e agendamentos
 
-- `jarvis_core::workflow`: workflows TOML com passos `tool` (passam pela mesma
+- `claudio_core::workflow`: workflows TOML com passos `tool` (passam pela mesma
   política de permissão via `Agent::call_tool`) e `task` (sessões filhas).
-- Agendamentos cron ficam na tabela `schedules`; `jarvis daemon` verifica a
+- Agendamentos cron ficam na tabela `schedules`; `claudio daemon` verifica a
   cada 20 s e executa com aprovador não interativo (só ferramentas
   pré‑aprovadas; nunca destrutivas ou administrativas).
 
 ## Plataformas
 
-`jarvis_llm::platform` concentra as diferenças entre sistemas: busca de executáveis (PATHEXT no
+`claudio_llm::platform` concentra as diferenças entre sistemas: busca de executáveis (PATHEXT no
 Windows, pastas de apps no macOS), `~`, caminhos canônicos sem `\\?\`, nome do SO, PIDs e memória
 (`sysinfo`). O `shell` usa bash (Linux/macOS) ou PowerShell (Windows); o isolamento usa bubblewrap
 (Linux) ou `sandbox-exec` (macOS).
@@ -129,17 +129,17 @@ Windows, pastas de apps no macOS), `~`, caminhos canônicos sem `\\?\`, nome do 
 - Linux: `scripts/build-appimage.sh` compila com `cargo zigbuild` para glibc 2.31,
 monta o AppDir (`packaging/appimage`) e gera o AppImage. O `AppRun` abre a GUI
 sem argumentos e a CLI com argumentos ou sem display.
-- macOS: `scripts/build-macos.sh` gera binários universais (arm64 + x86_64), `Jarvis Core.app` e `.dmg`.
-- Windows: `scripts/build-windows.ps1` gera um `.zip` com `jarvis.exe` e `jarvis-gui.exe` (ícone embutido).
+- macOS: `scripts/build-macos.sh` gera binários universais (arm64 + x86_64), `Claudio Code.app` e `.dmg`.
+- Windows: `scripts/build-windows.ps1` gera um `.zip` com `claudio.exe` e `claudio-gui.exe` (ícone embutido).
 - `.github/workflows/release.yml` roda os testes nos três sistemas, gera todos os pacotes e publica o
   release com `SHA256SUMS.txt`.
 
 ## Persistência
 
-`~/.local/share/jarvis/jarvis.db` (SQLite, WAL):
+`~/.local/share/claudio/claudio.db` (SQLite, WAL):
 `sessions`, `messages`, `memories` + `memories_fts` (FTS5), `schedules`,
-`consents`. Auditoria em `~/.local/share/jarvis/audit.jsonl` com encadeamento
-de hash. Configuração em `~/.config/jarvis/config.toml`.
+`consents`. Auditoria em `~/.local/share/claudio/audit.jsonl` com encadeamento
+de hash. Configuração em `~/.config/claudio/config.toml`.
 
 ## Interfaces
 
@@ -154,7 +154,7 @@ de hash. Configuração em `~/.config/jarvis/config.toml`.
 ## Critérios de aceitação
 
 1. `cargo build --release` e `cargo test --workspace` passam.
-2. `jarvis run "..."` com modelo local (llama-server) cria/edita arquivos e
+2. `claudio run "..."` com modelo local (llama-server) cria/edita arquivos e
    roda comandos reais, com aprovação.
 3. Provedores Anthropic, Gemini e OpenAI testados contra servidores HTTP
    simulados com o formato real da API (sem chaves no ambiente de CI).

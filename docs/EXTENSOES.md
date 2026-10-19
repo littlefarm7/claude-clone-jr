@@ -17,14 +17,14 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/home/eu/projetos"]
 
 ## Skills
 
-Uma skill é uma pasta com `SKILL.md` em `~/.config/jarvis/skills/` (ou nas pastas de `skills_dirs`):
+Uma skill é uma pasta com `SKILL.md` em `~/.config/claudio/skills/` (ou nas pastas de `skills_dirs`):
 
 ```markdown
 ---
 name: relatorio-mensal
 description: Como montar o relatório mensal de vendas
 ---
-1. Leia os CSV de ~/jarvis-work/vendas.
+1. Leia os CSV de ~/claudio-work/vendas.
 2. ...
 ```
 

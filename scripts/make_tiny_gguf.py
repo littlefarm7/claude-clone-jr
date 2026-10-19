@@ -37,7 +37,7 @@ head_dim = n_embd // n_head
 rng = np.random.default_rng(0)
 
 w = gguf.GGUFWriter(out, "qwen2")
-w.add_name("jarvis-tiny-random")
+w.add_name("claudio-tiny-random")
 w.add_block_count(n_layer)
 w.add_context_length(4096)
 w.add_embedding_length(n_embd)

@@ -32,9 +32,9 @@ jobs:
       - name: tar.gz
         run: |
           V=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
-          D=Jarvis_Core-$V-linux-x86_64
+          D=Claudio_Code-$V-linux-x86_64
           mkdir -p target/$D
-          cp target/x86_64-unknown-linux-gnu/release/jarvis target/x86_64-unknown-linux-gnu/release/jarvis-gui README.md LICENSE target/$D/
+          cp target/x86_64-unknown-linux-gnu/release/claudio target/x86_64-unknown-linux-gnu/release/claudio-gui README.md LICENSE target/$D/
           tar -C target -czf dist/$D.tar.gz $D
       - uses: actions/upload-artifact@v4
         with:
@@ -53,9 +53,9 @@ jobs:
       - run: ./scripts/build-macos.sh
       - name: Teste do binário universal
         run: |
-          lipo -info target/universal/jarvis
-          target/universal/jarvis --version
-          target/universal/jarvis doctor
+          lipo -info target/universal/claudio
+          target/universal/claudio --version
+          target/universal/claudio doctor
       - uses: actions/upload-artifact@v4
         with:
           name: macos
@@ -71,8 +71,8 @@ jobs:
       - run: pwsh -File scripts/build-windows.ps1
       - name: Teste do executável
         run: |
-          .\target\release\jarvis.exe --version
-          .\target\release\jarvis.exe doctor
+          .\target\release\claudio.exe --version
+          .\target\release\claudio.exe doctor
       - uses: actions/upload-artifact@v4
         with:
           name: windows
@@ -93,7 +93,7 @@ jobs:
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
           target_commitish: ${{ github.sha }}
-          name: Jarvis Core ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
+          name: Claudio Code ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
           body_path: RELEASE_NOTES.md
           files: dist/*
           fail_on_unmatched_files: true

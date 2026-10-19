@@ -1,10 +1,10 @@
-Jarvis Core para Windows
+Claudio Code para Windows
 ========================
 
-1. Extraia o .zip numa pasta, por exemplo C:\Programas\Jarvis.
-2. Abra a interface: clique duas vezes em jarvis-gui.exe.
-3. Use a CLI no PowerShell: .\jarvis.exe doctor
-4. Opcional: adicione a pasta ao PATH para usar "jarvis" em qualquer terminal.
+1. Extraia o .zip numa pasta, por exemplo C:\Programas\Claudio.
+2. Abra a interface: clique duas vezes em claudio-gui.exe.
+3. Use a CLI no PowerShell: .\claudio.exe doctor
+4. Opcional: adicione a pasta ao PATH para usar "claudio" em qualquer terminal.
 
 O Windows SmartScreen pode avisar porque o executável não tem assinatura comercial.
 Clique em "Mais informações" > "Executar assim mesmo".

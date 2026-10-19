@@ -25,7 +25,7 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release -DLLAMA_CURL=OFF -DGGML_VULKAN=ON
 cmake --build build -j"$(nproc)" --target llama-server
 ```
 
-Depois, aponte o Jarvis para o binário em `~/.config/jarvis/config.toml`:
+Depois, aponte o Claudio para o binário em `~/.config/claudio/config.toml`:
 
 ```toml
 [local]
@@ -51,7 +51,7 @@ Hermes. Sugestões para 16 GB de RAM:
 Baixe de repositórios GGUF no Hugging Face (ex.: `Qwen/Qwen2.5-7B-Instruct-GGUF`) para `~/modelos/`.
 Evite quantizar o cache KV agressivamente (`-ctk q4_0`): prejudica as chamadas de ferramenta.
 
-## 3. Configurar no Jarvis
+## 3. Configurar no Claudio
 
 ```toml
 default_model = "local"
@@ -67,11 +67,11 @@ max_output_tokens = 2048
 tags = ["fast", "default", "local", "code"]
 ```
 
-Com `gguf_path` e `local.autostart = true`, o Jarvis inicia o `llama-server` em `127.0.0.1` quando precisa e
+Com `gguf_path` e `local.autostart = true`, o Claudio inicia o `llama-server` em `127.0.0.1` quando precisa e
 o encerra ao sair. O roteador recusa o modelo se o arquivo for maior que a RAM livre.
 
 Para usar um servidor já em execução (seu, ou Ollama/LM Studio), remova `gguf_path` e ajuste `base_url`.
-Teste com `jarvis models`.
+Teste com `claudio models`.
 
 ## 4. Memória semântica com embeddings locais (opcional)
 

@@ -2,7 +2,7 @@
 """Deterministic OpenAI-compatible server used by end-to-end tests.
 
 It behaves like a tool-calling model following a fixed strategy, so the
-real `jarvis` binary, HTTP client, permission system and tools are exercised
+real `claudio` binary, HTTP client, permission system and tools are exercised
 without network access or model weights. Usage: mock_llm.py PORT
 """
 import json

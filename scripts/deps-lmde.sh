@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Mostra os pacotes recomendados para o Jarvis Core no LMDE / Debian.
+# Mostra os pacotes recomendados para o Claudio Code no LMDE / Debian.
 # Este script NÃO executa sudo: copie e rode o comando você mesmo.
 cat <<'TXT'
 Essenciais (compilação, PDF, documentos, mídia, isolamento):

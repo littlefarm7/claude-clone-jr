@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.0
+- Projeto renomeado para Claudio Code (binários `claudio` e `claudio-gui`), com migração das pastas antigas.
+- Tela de Configurações: modelos por API (com teste de conexão e chave protegida), download de modelos locais e instalação do llama.cpp, opções gerais.
+- Comandos `claudio models …` e `claudio llama-install`.
+
 ## 0.2.0
 - Suporte a Windows e macOS (ver RELEASE_NOTES.md).
 - Release automatizado no GitHub com AppImage, tar.gz, zip e dmg.

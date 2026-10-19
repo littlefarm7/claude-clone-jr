@@ -1,4 +1,4 @@
-# Roadmap — Jarvis Core
+# Roadmap — Claudio Code
 
 Legenda: ✅ feito e testado · 🟡 feito, teste parcial · ⛔ bloqueado (motivo) · ⏳ pendente
 
@@ -30,10 +30,20 @@ Total: 73 testes automatizados passando (`cargo test --workspace`), `clippy -D w
 
 | Item | Verificação | Status |
 |---|---|---|
-| Windows 10/11 | testes automatizados no CI (windows-2022); `jarvis.exe` executado também sob Wine (SQLite, memória, doctor) | ver CI |
+| Windows 10/11 | testes automatizados no CI (windows-2022); `claudio.exe` executado também sob Wine (SQLite, memória, doctor) | ver CI |
 | macOS 11+ universal | testes no CI (macos-14); `.app` + `.dmg` gerados no CI | ver CI |
 | Linux | testes no CI (ubuntu-24.04) e local; AppImage | ✅ |
 | Release automatizado | `.github/workflows/release.yml` (tag `v*`) | ✅ |
+
+## v0.3 — Claudio Code e configurações
+
+| Item | Verificação | Status |
+|---|---|---|
+| Renomeação para Claudio Code (+ migração de pastas) | suíte completa nos 3 sistemas | ✅ |
+| Configurar modelos por API na GUI e CLI | GUI sob Xvfb: provedor compatível, teste de conexão, salvar; chave em arquivo 0600; teste e2e da CLI | ✅ |
+| Baixar modelos locais | downloader testado contra servidor local (retomada, SHA‑256, cancelamento); download real do Hugging Face bloqueado pela rede do ambiente de testes | 🟡 |
+| Instalar llama.cpp com um clique | seleção de pacote e extração testadas com release simulado; API do GitHub bloqueada pela rede do ambiente de testes | 🟡 |
+| Usar `.gguf`/`llama-server` existentes pela GUI | GUI sob Xvfb: llama-server iniciado automaticamente | ✅ |
 
 ## Próximos passos
 
@@ -43,7 +53,7 @@ Total: 73 testes automatizados passando (`cargo test --workspace`), `clippy -D w
 4. Visão: anexar imagens às mensagens para modelos multimodais.
 5. Transporte MCP HTTP (streamable HTTP) e recursos/prompts MCP.
 6. Voz contínua (detecção de atividade de voz) e atalho global.
-7. Painel de permissões na GUI (editar política sem abrir o TOML).
+7. Permissões por ferramenta na GUI (o modo geral já é editável em Configurações → Geral).
 8. Pacote .deb e repositório APT opcional.
 9. Windows: isolamento de processos (AppContainer/Job Objects) e instalador MSI assinado.
 10. macOS: notarização com conta de desenvolvedor Apple.

@@ -1,0 +1,16 @@
+# Serviço de usuário (não requer root):
+#   mkdir -p ~/.config/systemd/user && cp claudio-daemon.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now claudio-daemon
+[Unit]
+Description=Claudio Code — agendamentos
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/claudio daemon --non-interactive
+Restart=on-failure
+RestartSec=30
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

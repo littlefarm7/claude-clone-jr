@@ -907,6 +907,135 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
+name = "claudio-cli"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "clap",
+ "claudio-core",
+ "claudio-llm",
+ "claudio-tools",
+ "libc",
+ "rpassword",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "toml 0.8.23",
+ "tracing",
+ "tracing-subscriber",
+ "winresource",
+]
+
+[[package]]
+name = "claudio-core"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "claudio-llm",
+ "cron",
+ "dirs",
+ "hex",
+ "regex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-util",
+ "toml 0.8.23",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "claudio-gui"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "claudio-core",
+ "claudio-llm",
+ "claudio-tools",
+ "eframe",
+ "egui_extras",
+ "image",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "winresource",
+]
+
+[[package]]
+name = "claudio-llm"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "dirs",
+ "dunce",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sysinfo",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "claudio-tools"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "base64 0.22.1",
+ "calamine",
+ "chrono",
+ "claudio-core",
+ "claudio-llm",
+ "csv",
+ "dunce",
+ "flate2",
+ "globset",
+ "hex",
+ "html2text",
+ "ignore",
+ "image",
+ "libc",
+ "pdf-extract",
+ "quick-xml 0.38.4",
+ "regex",
+ "reqwest",
+ "rust_xlsxwriter",
+ "serde",
+ "serde_json",
+ "sha2",
+ "shell-words",
+ "sysinfo",
+ "tar",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "trash",
+ "url",
+ "uuid",
+ "zip",
+]
+
+[[package]]
 name = "clipboard-win"
 version = "5.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1569,6 +1698,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e6853b52649d4ac5c0bd02320cddc5ba956bdb407c4b75a2c6b75bf51500f8c"
 dependencies = [
  "simd-adler32",
+]
+
+[[package]]
+name = "filetime"
+version = "0.2.29"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c287a33c7f0a620c38e641e7f60827713987b3c0f26e8ddc9462cc69cf75759"
+dependencies = [
+ "cfg-if",
+ "libc",
 ]
 
 [[package]]
@@ -2333,132 +2472,6 @@ name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
-
-[[package]]
-name = "jarvis-cli"
-version = "0.2.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "clap",
- "jarvis-core",
- "jarvis-llm",
- "jarvis-tools",
- "libc",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tokio-util",
- "toml 0.8.23",
- "tracing",
- "tracing-subscriber",
- "winresource",
-]
-
-[[package]]
-name = "jarvis-core"
-version = "0.2.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "cron",
- "dirs",
- "hex",
- "jarvis-llm",
- "regex",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror 2.0.21",
- "tokio",
- "tokio-util",
- "toml 0.8.23",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "jarvis-gui"
-version = "0.2.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "eframe",
- "egui_extras",
- "image",
- "jarvis-core",
- "jarvis-llm",
- "jarvis-tools",
- "serde_json",
- "tokio",
- "tokio-util",
- "winresource",
-]
-
-[[package]]
-name = "jarvis-llm"
-version = "0.2.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "axum",
- "dirs",
- "dunce",
- "reqwest",
- "serde",
- "serde_json",
- "sysinfo",
- "tokio",
- "tokio-util",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "jarvis-tools"
-version = "0.2.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "axum",
- "base64 0.22.1",
- "calamine",
- "chrono",
- "csv",
- "dunce",
- "globset",
- "hex",
- "html2text",
- "ignore",
- "image",
- "jarvis-core",
- "jarvis-llm",
- "libc",
- "pdf-extract",
- "quick-xml 0.38.4",
- "regex",
- "reqwest",
- "rust_xlsxwriter",
- "serde",
- "serde_json",
- "sha2",
- "shell-words",
- "sysinfo",
- "tempfile",
- "tokio",
- "tokio-util",
- "tracing",
- "trash",
- "url",
- "uuid",
- "zip",
-]
 
 [[package]]
 name = "jni"
@@ -3918,6 +3931,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "rpassword"
+version = "7.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2da316a15f47e3d053de9cb2c439650bd8fa4aaeb9365f2e5f27f492ff73c196"
+dependencies = [
+ "libc",
+ "rtoolbox",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "rtoolbox"
+version = "0.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9a1efe12a1469752d0e6ff5ebec0b6ef4924cc5c4c71046b0ec730040535819d"
+dependencies = [
+ "libc",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "rusqlite"
 version = "0.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4529,6 +4563,17 @@ dependencies = [
  "objc2-core-foundation",
  "objc2-io-kit",
  "windows 0.61.3",
+]
+
+[[package]]
+name = "tar"
+version = "0.4.46"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f6221d9a6003c78398e3b239969f352578258df48c8eb051caadae0015bc840"
+dependencies = [
+ "filetime",
+ "libc",
+ "xattr",
 ]
 
 [[package]]
@@ -5972,6 +6017,16 @@ name = "x11rb-protocol"
 version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ea6fc2961e4ef194dcbfe56bb845534d0dc8098940c7e5c012a258bfec6701bd"
+
+[[package]]
+name = "xattr"
+version = "1.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32e45ad4206f6d2479085147f02bc2ef834ac85886624a23575ae137c8aa8156"
+dependencies = [
+ "libc",
+ "rustix 1.1.5",
+]
 
 [[package]]
 name = "xcursor"

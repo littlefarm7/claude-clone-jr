@@ -1,13 +1,13 @@
 # Voz (local)
 
-O Jarvis já tem a camada de voz pronta. Ela usa motores locais e gratuitos:
+O Claudio já tem a camada de voz pronta. Ela usa motores locais e gratuitos:
 
 | Função | Motor | Estado |
 |---|---|---|
 | Fala → texto | whisper.cpp (`whisper-cli`) | implementado; não testado neste ambiente (sem modelo) |
 | Texto → fala | piper | implementado; não testado neste ambiente (sem voz `.onnx`) |
 | Texto → fala | espeak-ng | implementado e testado |
-| Microfone | `arecord` (alsa-utils) | implementado (`jarvis voice listen`) |
+| Microfone | `arecord` (alsa-utils) | implementado (`claudio voice listen`) |
 
 ## Instalação no LMDE
 
@@ -32,9 +32,9 @@ O Jarvis já tem a camada de voz pronta. Ela usa motores locais e gratuitos:
 
 ## Uso
 
-- `jarvis voice say "Bom dia"` — gera `fala.wav` e toca com `paplay`/`aplay`.
-- `jarvis voice transcribe reuniao.mp3 --lang pt` — transcreve qualquer áudio/vídeo (converte com ffmpeg).
-- `jarvis voice listen --seconds 6` — grava, transcreve e executa como tarefa.
+- `claudio voice say "Bom dia"` — gera `fala.wav` e toca com `paplay`/`aplay`.
+- `claudio voice transcribe reuniao.mp3 --lang pt` — transcreve qualquer áudio/vídeo (converte com ffmpeg).
+- `claudio voice listen --seconds 6` — grava, transcreve e executa como tarefa.
 - O agente também pode usar as ferramentas `transcribe` e `speak`.
 
 Próximo passo previsto: modo de conversa contínua com detecção de fala (ver ROADMAP).

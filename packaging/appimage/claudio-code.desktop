@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Claudio Code
+GenericName=Agente de IA
+Comment=Agente autônomo local-first: arquivos, terminal, web, documentos e mídia
+Exec=AppRun
+Icon=claudio-code
+Terminal=false
+Categories=Utility;Development;
+Keywords=IA;agente;LLM;assistente;automação;
+StartupWMClass=claudio-code

@@ -1,0 +1,28 @@
+[package]
+name = "claudio-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+claudio-llm = { path = "../claudio-llm" }
+anyhow.workspace = true
+thiserror.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+regex.workspace = true
+tracing.workspace = true
+dirs.workspace = true
+toml.workspace = true
+sha2.workspace = true
+hex.workspace = true
+rusqlite.workspace = true
+cron = "0.15"
+
+[dev-dependencies]
+tempfile.workspace = true

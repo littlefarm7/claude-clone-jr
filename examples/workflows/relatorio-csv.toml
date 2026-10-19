@@ -1,11 +1,11 @@
-# jarvis workflow examples/workflows/relatorio-csv.toml --var pasta=~/jarvis-work/vendas
+# claudio workflow examples/workflows/relatorio-csv.toml --var pasta=~/claudio-work/vendas
 name = "relatorio-csv"
 description = "Lista CSVs de uma pasta e gera um relatório em PDF"
 # Ferramentas que podem rodar sem perguntar quando o workflow é agendado (modo não interativo).
 allowed_tools = ["doc_create", "write_file"]
 
 [vars]
-pasta = "~/jarvis-work"
+pasta = "~/claudio-work"
 
 [[steps]]
 tool = "glob"

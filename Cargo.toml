@@ -1,9 +1,9 @@
 [workspace]
 resolver = "2"
-members = ["crates/jarvis-llm", "crates/jarvis-core", "crates/jarvis-tools", "crates/jarvis-cli", "crates/jarvis-gui"]
+members = ["crates/claudio-llm", "crates/claudio-core", "crates/claudio-tools", "crates/claudio-cli", "crates/claudio-gui"]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license = "Apache-2.0"
 repository = "https://github.com/littlefarm7/claude-clone-jr"
