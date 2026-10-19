@@ -11,6 +11,7 @@ pub mod plan;
 pub mod safety;
 pub mod store;
 pub mod tool;
+pub mod workflow;
 
 pub use agent::{Agent, AgentDeps, RunOutcome};
 pub use config::Config;

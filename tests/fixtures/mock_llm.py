@@ -80,4 +80,6 @@ class H(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
+    srv = HTTPServer(("127.0.0.1", int(sys.argv[1]) if len(sys.argv) > 1 else 0), H)
+    print(srv.server_address[1], flush=True)  # actual port (useful with 0)
+    srv.serve_forever()

@@ -14,7 +14,7 @@ use jarvis_tools::runtime::Runtime;
 use tokio_util::sync::CancellationToken;
 
 use crate::term::*;
-use crate::{AuditCmd, Cli, ConfigCmd, ConsentCmd, MemoryCmd};
+use crate::{AuditCmd, Cli, ConfigCmd, ConsentCmd, MemoryCmd, ScheduleCmd, VoiceCmd};
 
 fn load_config(cli: &Cli) -> Result<Config> {
     match &cli.config {
@@ -446,6 +446,175 @@ pub async fn doctor(cli: &Cli) -> Result<i32> {
     );
     for key in ["ANTHROPIC_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY"] {
         check(std::env::var(key).map(|v| !v.is_empty()).unwrap_or(false), &format!("{key} definido"), "(opcional)");
+    }
+    Ok(0)
+}
+
+/// Re-launch this command without `--detach`, detached from the terminal.
+pub fn detach() -> Result<i32> {
+    let logs = data_dir().join("logs");
+    std::fs::create_dir_all(&logs)?;
+    let log = logs.join(format!("run-{}.log", chrono::Local::now().format("%Y%m%d-%H%M%S")));
+    let f = std::fs::File::create(&log)?;
+    let args: Vec<String> = std::env::args().skip(1).filter(|a| a != "--detach").collect();
+    let mut cmd = std::process::Command::new(std::env::current_exe()?);
+    cmd.args(&args).arg("--non-interactive").stdin(std::process::Stdio::null()).stdout(f.try_clone()?).stderr(f);
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+    let child = cmd.spawn()?;
+    println!("Em segundo plano: pid {} — log {}", child.id(), log.display());
+    println!("Acompanhe com `jarvis sessions` e `tail -f {}`.", log.display());
+    Ok(0)
+}
+
+pub async fn workflow(cli: Arc<Cli>, file: &Path, extra: &[String]) -> Result<i32> {
+    let mut wf = jarvis_core::workflow::Workflow::load(file)?;
+    for kv in extra {
+        let (k, v) = kv.split_once('=').context("use --var nome=valor")?;
+        wf.vars.insert(k.into(), v.into());
+    }
+    let rt = runtime(&cli).await?;
+    let approver = approver(&cli, Some(&wf.allowed_tools.join(",")));
+    let sink: Arc<dyn EventSink> = Arc::new(Printer { json: cli.json });
+    let task_text: String = wf.steps.iter().filter_map(|s| s.task.clone()).collect::<Vec<_>>().join("\n");
+    let sel = rt.select_model(cli.model.as_deref(), &task_text, approver.as_ref()).await?;
+    let agent = rt.agent(&sel, approver, sink);
+    println!("{} {}", bold("Workflow:"), wf.name);
+    let out = jarvis_core::workflow::run_workflow(&agent, &wf, ctrlc_token()).await;
+    rt.shutdown().await;
+    let out = out?;
+    for l in &out.log {
+        println!("  {l}");
+    }
+    println!("{} sessão {}", if out.ok { green("concluído") } else { red("falhou") }, out.session_id);
+    Ok(if out.ok { 0 } else { 1 })
+}
+
+pub async fn schedule(cli: &Cli, cmd: &ScheduleCmd) -> Result<i32> {
+    let rt = runtime(cli).await?;
+    match cmd {
+        ScheduleCmd::Add { name, cron, task, workflow, allow, now } => {
+            jarvis_core::workflow::parse_cron(cron)?;
+            let (kind, payload) = match (task, workflow) {
+                (Some(t), None) => ("task", t.clone()),
+                (None, Some(w)) => {
+                    let abs = std::fs::canonicalize(w).with_context(|| format!("{} não existe", w.display()))?;
+                    jarvis_core::workflow::Workflow::load(&abs)?;
+                    ("workflow", abs.to_string_lossy().to_string())
+                }
+                _ => bail!("informe --task ou --workflow"),
+            };
+            let id = rt.store.add_schedule(name, cron, kind, &payload, allow)?;
+            let baseline = if *now { chrono::Utc::now() - chrono::Duration::days(366) } else { chrono::Utc::now() };
+            rt.store.set_schedule_last_run(id, &baseline.to_rfc3339())?;
+            println!("agendamento #{id} criado. Rode `jarvis daemon` (ou o serviço systemd --user) para executá-lo.");
+        }
+        ScheduleCmd::List => {
+            for s in rt.store.list_schedules()? {
+                println!("#{:<3} {:<20} {:<16} {:<8} {}  {}", s.id, s.name, s.cron, s.kind, s.payload.chars().take(60).collect::<String>(), dim(&format!("última: {}", s.last_run.unwrap_or_default())));
+            }
+        }
+        ScheduleCmd::Delete { id } => println!("{}", if rt.store.delete_schedule(*id)? { "removido" } else { "não existe" }),
+    }
+    Ok(0)
+}
+
+pub async fn daemon(cli: Arc<Cli>, once: bool) -> Result<i32> {
+    let lock = data_dir().join("daemon.pid");
+    if let Ok(pid) = std::fs::read_to_string(&lock) {
+        if Path::new(&format!("/proc/{}", pid.trim())).exists() && pid.trim() != std::process::id().to_string() {
+            bail!("daemon já em execução (pid {})", pid.trim());
+        }
+    }
+    std::fs::create_dir_all(data_dir())?;
+    std::fs::write(&lock, std::process::id().to_string())?;
+    let rt = runtime(&cli).await?;
+    let sink: Arc<dyn EventSink> = Arc::new(Printer { json: cli.json });
+    println!("{}", dim("daemon de agendamentos iniciado (nenhuma porta de rede é aberta)"));
+    let cancel = ctrlc_token();
+    loop {
+        for s in rt.store.list_schedules()?.into_iter().filter(|s| s.enabled) {
+            let now = chrono::Utc::now();
+            if !jarvis_core::workflow::is_due(&s.cron, s.last_run.as_deref(), now, now).unwrap_or(false) {
+                continue;
+            }
+            rt.store.set_schedule_last_run(s.id, &now.to_rfc3339())?;
+            println!("{} #{} {}", bold("executando agendamento"), s.id, s.name);
+            let allowed: Vec<String> = s.allowed_tools.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
+            let approver: Arc<dyn Approver> = Arc::new(NonInteractive { preapproved: allowed });
+            let result: Result<()> = async {
+                if s.kind == "workflow" {
+                    let wf = jarvis_core::workflow::Workflow::load(Path::new(&s.payload))?;
+                    let sel = rt.select_model(cli.model.as_deref(), &wf.name, approver.as_ref()).await?;
+                    let agent = rt.agent(&sel, approver.clone(), sink.clone());
+                    let out = jarvis_core::workflow::run_workflow(&agent, &wf, cancel.child_token()).await?;
+                    println!("  workflow {}: {}", if out.ok { "ok" } else { "falhou" }, out.log.join("; "));
+                } else {
+                    let sel = rt.select_model(cli.model.as_deref(), &s.payload, approver.as_ref()).await?;
+                    let agent = rt.agent(&sel, approver.clone(), sink.clone());
+                    let out = agent.start(&s.payload, cancel.child_token()).await?;
+                    println!("  tarefa: {}", out.status.as_str());
+                }
+                Ok(())
+            }
+            .await;
+            if let Err(e) = result {
+                println!("{} agendamento #{}: {e:#}", red("erro"), s.id);
+            }
+        }
+        if once || cancel.is_cancelled() {
+            break;
+        }
+        tokio::select! {
+            _ = tokio::time::sleep(std::time::Duration::from_secs(20)) => {}
+            _ = cancel.cancelled() => break,
+        }
+    }
+    rt.shutdown().await;
+    let _ = std::fs::remove_file(&lock);
+    Ok(0)
+}
+
+pub async fn voice(cli: Arc<Cli>, cmd: &VoiceCmd) -> Result<i32> {
+    let cfg = load_config(&cli)?;
+    let dir = tempfile::tempdir()?;
+    let mut c2 = cfg.clone();
+    c2.permissions.workspace_roots.push(dir.path().to_string_lossy().to_string());
+    let ctx = jarvis_tools::testutil::context_with(c2);
+    match cmd {
+        VoiceCmd::Transcribe { file, lang } => {
+            let p = std::fs::canonicalize(file)?;
+            println!("{}", jarvis_tools::voice::transcribe(&p, lang, &ctx).await?);
+        }
+        VoiceCmd::Say { text, out } => {
+            let engine = jarvis_tools::voice::speak(&text.join(" "), out, &ctx).await?;
+            println!("áudio em {} ({engine})", out.display());
+            for player in ["paplay", "aplay", "pw-play"] {
+                if jarvis_tools::shell::which(player).is_some() {
+                    let _ = tokio::process::Command::new(player).arg(out).status().await;
+                    break;
+                }
+            }
+        }
+        VoiceCmd::Listen { seconds } => {
+            if jarvis_tools::shell::which("arecord").is_none() {
+                bail!("arecord não encontrado (sudo apt install alsa-utils)");
+            }
+            let wav = dir.path().join("mic.wav");
+            println!("gravando {seconds} s…");
+            let st = tokio::process::Command::new("arecord").args(["-q", "-f", "S16_LE", "-r", "16000", "-c", "1", "-d", &seconds.to_string()]).arg(&wav).status().await?;
+            if !st.success() {
+                bail!("falha ao gravar do microfone");
+            }
+            let text = jarvis_tools::voice::transcribe(&wav, "pt", &ctx).await?;
+            println!("{} {text}", cyan("você disse:"));
+            if !text.trim().is_empty() {
+                return run_task(cli.clone(), text, None).await;
+            }
+        }
     }
     Ok(0)
 }

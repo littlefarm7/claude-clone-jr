@@ -1,9 +1,7 @@
 //! Runs the real `jarvis` binary against a scripted OpenAI-compatible server.
 
-use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
-use std::time::Duration;
 
 struct Server(Child);
 impl Drop for Server {
@@ -12,20 +10,14 @@ impl Drop for Server {
     }
 }
 
-fn free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
-}
-
+/// Start the scripted model server on an OS-assigned port (printed on stdout).
 fn start_mock() -> (Server, u16) {
-    let port = free_port();
+    use std::io::BufRead;
     let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/mock_llm.py");
-    let child = Command::new("python3").arg(script).arg(port.to_string()).spawn().expect("python3");
-    for _ in 0..50 {
-        if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(100));
-    }
+    let mut child = Command::new("python3").arg(script).arg("0").stdout(std::process::Stdio::piped()).spawn().expect("python3");
+    let mut line = String::new();
+    std::io::BufReader::new(child.stdout.take().unwrap()).read_line(&mut line).unwrap();
+    let port: u16 = line.trim().parse().expect("porta do mock");
     (Server(child), port)
 }
 
@@ -108,4 +100,43 @@ fn json_events_and_memory_cli() {
     assert!(out.status.success());
     let out = jarvis(home.path(), &cfg, &["memory", "list"]);
     assert!(String::from_utf8_lossy(&out.stdout).contains("prefiro PDF"));
+}
+
+#[test]
+fn workflow_schedule_and_daemon() {
+    let (_srv, port) = start_mock();
+    let (home, cfg) = setup(port);
+    let wf = home.path().join("wf.toml");
+    std::fs::write(
+        &wf,
+        r#"name = "contagem"
+allowed_tools = ["write_file"]
+[vars]
+arquivo = "dados.csv"
+[[steps]]
+tool = "shell"
+args = { command = "wc -l < {{arquivo}}" }
+save_as = "linhas"
+[[steps]]
+tool = "write_file"
+args = { path = "contagem.txt", content = "{{linhas}}" }
+[[steps]]
+task = "oi"
+"#,
+    )
+    .unwrap();
+    let out = jarvis(home.path(), &cfg, &["workflow", wf.to_str().unwrap()]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success(), "{stdout}\n{}", String::from_utf8_lossy(&out.stderr));
+    let written = std::fs::read_to_string(home.path().join("ws/contagem.txt")).unwrap();
+    assert!(written.contains("exit code: 0") && written.contains('3'), "{written}");
+
+    let out = jarvis(home.path(), &cfg, &["schedule", "add", "--name", "diario", "--cron", "0 8 * * *", "--task", "oi", "--now"]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let out = jarvis(home.path(), &cfg, &["daemon", "--once"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("executando agendamento") && stdout.contains("tarefa: completed"), "{stdout}");
+    // Not due again right after running.
+    let out = jarvis(home.path(), &cfg, &["daemon", "--once"]);
+    assert!(!String::from_utf8_lossy(&out.stdout).contains("executando agendamento"));
 }

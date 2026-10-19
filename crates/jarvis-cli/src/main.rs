@@ -44,6 +44,32 @@ pub enum Cmd {
         /// Ferramentas pré-aprovadas no modo não interativo (separadas por vírgula)
         #[arg(long)]
         allow: Option<String>,
+        /// Roda em segundo plano (log em ~/.local/share/jarvis/logs)
+        #[arg(long)]
+        detach: bool,
+    },
+    /// Executa um workflow TOML
+    Workflow {
+        file: std::path::PathBuf,
+        /// Variáveis extras: nome=valor
+        #[arg(long = "var")]
+        vars: Vec<String>,
+    },
+    /// Agendamentos (executados pelo `jarvis daemon`)
+    Schedule {
+        #[command(subcommand)]
+        cmd: ScheduleCmd,
+    },
+    /// Executa agendamentos em primeiro plano (sem abrir portas de rede)
+    Daemon {
+        /// Verifica uma vez e sai
+        #[arg(long)]
+        once: bool,
+    },
+    /// Voz local
+    Voice {
+        #[command(subcommand)]
+        cmd: VoiceCmd,
     },
     /// Retoma uma sessão interrompida
     Resume { id: String },
@@ -113,6 +139,50 @@ pub enum MemoryCmd {
 }
 
 #[derive(Subcommand)]
+pub enum ScheduleCmd {
+    /// Adiciona: --cron "0 8 * * 1-5" e --task "..." ou --workflow arquivo.toml
+    Add {
+        #[arg(long)]
+        name: String,
+        #[arg(long)]
+        cron: String,
+        #[arg(long)]
+        task: Option<String>,
+        #[arg(long)]
+        workflow: Option<std::path::PathBuf>,
+        /// Ferramentas pré-aprovadas (separadas por vírgula)
+        #[arg(long, default_value = "")]
+        allow: String,
+        /// Executa também no próximo ciclo do daemon
+        #[arg(long)]
+        now: bool,
+    },
+    List,
+    Delete { id: i64 },
+}
+
+#[derive(Subcommand)]
+pub enum VoiceCmd {
+    /// Transcreve um arquivo de áudio/vídeo
+    Transcribe {
+        file: std::path::PathBuf,
+        #[arg(long, default_value = "pt")]
+        lang: String,
+    },
+    /// Fala um texto (gera WAV e toca com aplay/paplay se disponível)
+    Say {
+        text: Vec<String>,
+        #[arg(long, default_value = "fala.wav")]
+        out: std::path::PathBuf,
+    },
+    /// Grava do microfone (arecord), transcreve e executa como tarefa
+    Listen {
+        #[arg(long, default_value_t = 5)]
+        seconds: u32,
+    },
+}
+
+#[derive(Subcommand)]
 pub enum AuditCmd {
     Verify,
     Tail {
@@ -157,7 +227,17 @@ async fn run(cli: Cli) -> Result<i32> {
     match &cli.cmd {
         None => commands::chat(cli.clone(), None).await,
         Some(Cmd::Chat { session }) => commands::chat(cli.clone(), session.clone()).await,
-        Some(Cmd::Run { task, allow }) => commands::run_task(cli.clone(), task.join(" "), allow.clone()).await,
+        Some(Cmd::Run { task, allow, detach }) => {
+            if *detach {
+                commands::detach()
+            } else {
+                commands::run_task(cli.clone(), task.join(" "), allow.clone()).await
+            }
+        }
+        Some(Cmd::Workflow { file, vars }) => commands::workflow(cli.clone(), file, vars).await,
+        Some(Cmd::Schedule { cmd }) => commands::schedule(&cli, cmd).await,
+        Some(Cmd::Daemon { once }) => commands::daemon(cli.clone(), *once).await,
+        Some(Cmd::Voice { cmd }) => commands::voice(cli.clone(), cmd).await,
         Some(Cmd::Resume { id }) => commands::resume(cli.clone(), id).await,
         Some(Cmd::Sessions { limit }) => commands::sessions(&cli, *limit).await,
         Some(Cmd::Show { id }) => commands::show(&cli, id).await,

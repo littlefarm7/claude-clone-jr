@@ -22,6 +22,7 @@ tracing.workspace = true
 clap = { version = "4", features = ["derive"] }
 toml.workspace = true
 serde.workspace = true
+tempfile.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
