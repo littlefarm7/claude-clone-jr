@@ -117,11 +117,22 @@ com `sudo` é `Admin`).
   cada 20 s e executa com aprovador não interativo (só ferramentas
   pré‑aprovadas; nunca destrutivas ou administrativas).
 
+## Plataformas
+
+`jarvis_llm::platform` concentra as diferenças entre sistemas: busca de executáveis (PATHEXT no
+Windows, pastas de apps no macOS), `~`, caminhos canônicos sem `\\?\`, nome do SO, PIDs e memória
+(`sysinfo`). O `shell` usa bash (Linux/macOS) ou PowerShell (Windows); o isolamento usa bubblewrap
+(Linux) ou `sandbox-exec` (macOS).
+
 ## Empacotamento
 
-`scripts/build-appimage.sh` compila com `cargo zigbuild` para glibc 2.31,
+- Linux: `scripts/build-appimage.sh` compila com `cargo zigbuild` para glibc 2.31,
 monta o AppDir (`packaging/appimage`) e gera o AppImage. O `AppRun` abre a GUI
 sem argumentos e a CLI com argumentos ou sem display.
+- macOS: `scripts/build-macos.sh` gera binários universais (arm64 + x86_64), `Jarvis Core.app` e `.dmg`.
+- Windows: `scripts/build-windows.ps1` gera um `.zip` com `jarvis.exe` e `jarvis-gui.exe` (ícone embutido).
+- `.github/workflows/release.yml` roda os testes nos três sistemas, gera todos os pacotes e publica o
+  release com `SHA256SUMS.txt`.
 
 ## Persistência
 

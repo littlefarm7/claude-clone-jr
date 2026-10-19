@@ -43,11 +43,16 @@ Decisão final = política da ferramenta ⊕ classe de risco ⊕ modo ⊕ taint:
 
 ## Isolamento
 
-- Se `bwrap` (bubblewrap) estiver instalado e `sandbox.enabled = true`,
+- **macOS:** o `shell` roda dentro do `sandbox-exec` (Seatbelt, nativo): escrita só no workspace e num
+  diretório temporário privado; rede bloqueável com `sandbox.network = false`.
+- **Windows:** não há isolamento de processos. O agente roda comandos no PowerShell com o usuário atual,
+  ambiente sem segredos e timeout. Comandos de administração (`runas`, `reg add`, `Set-ExecutionPolicy`,
+  `winget`…) são classificados como `Admin` e nunca aprovados automaticamente.
+- **Linux:** se `bwrap` (bubblewrap) estiver instalado e `sandbox.enabled = true`,
   `shell` roda com `/` somente leitura, workspace gravável, `/tmp` privado e,
   opcionalmente, sem rede (`sandbox.network = false`).
   LMDE: `sudo apt install bubblewrap` (faça você mesmo; o Jarvis não roda sudo).
-- Sem `bwrap`, o processo roda como o usuário, com cwd no workspace, ambiente
+- No Linux, sem `bwrap` (ou se o sistema proibir user namespaces), o processo roda como o usuário, com cwd no workspace, ambiente
   limpo de segredos, grupo de processos próprio e timeout.
 
 ## Auditoria

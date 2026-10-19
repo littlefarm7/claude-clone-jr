@@ -26,6 +26,15 @@ Ambiente de desenvolvimento: Ubuntu 24.04 x86_64 em container, 4 threads, 16 GB,
 
 Total: 73 testes automatizados passando (`cargo test --workspace`), `clippy -D warnings` e `rustfmt` limpos.
 
+## v0.2 — multiplataforma
+
+| Item | Verificação | Status |
+|---|---|---|
+| Windows 10/11 | testes automatizados no CI (windows-2022); `jarvis.exe` executado também sob Wine (SQLite, memória, doctor) | ver CI |
+| macOS 11+ universal | testes no CI (macos-14); `.app` + `.dmg` gerados no CI | ver CI |
+| Linux | testes no CI (ubuntu-24.04) e local; AppImage | ✅ |
+| Release automatizado | `.github/workflows/release.yml` (tag `v*`) | ✅ |
+
 ## Próximos passos
 
 1. Validar com modelos reais no LMDE (Qwen2.5‑7B Q4_K_M; build Vulkan na RX 5500 XT) e ajustar prompts.
@@ -36,3 +45,5 @@ Total: 73 testes automatizados passando (`cargo test --workspace`), `clippy -D w
 6. Voz contínua (detecção de atividade de voz) e atalho global.
 7. Painel de permissões na GUI (editar política sem abrir o TOML).
 8. Pacote .deb e repositório APT opcional.
+9. Windows: isolamento de processos (AppContainer/Job Objects) e instalador MSI assinado.
+10. macOS: notarização com conta de desenvolvedor Apple.

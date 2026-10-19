@@ -1,6 +1,7 @@
 # Jarvis Core
 
-Agente de IA autônomo, local-first e open source, escrito em Rust. Ele **planeja, executa e verifica** tarefas
+Agente de IA autônomo, local-first e open source (Apache-2.0), escrito em Rust.
+Roda em **Linux, Windows e macOS**. Ele **planeja, executa e verifica** tarefas
 usando ferramentas reais: arquivos, terminal, web, navegador, documentos (PDF, DOCX, XLSX, CSV, PPTX, LaTeX),
 áudio, vídeo, imagens, memória persistente, workflows, agendamentos, MCP e skills.
 A CLI `jarvis` e a interface gráfica `jarvis-gui` usam o mesmo núcleo.
@@ -18,27 +19,52 @@ Documentos: [ARCHITECTURE.md](ARCHITECTURE.md) · [SECURITY.md](SECURITY.md) · 
 
 ## Instalação
 
-### Opção 1 — AppImage
+Baixe o pacote do seu sistema na página de
+[Releases](https://github.com/littlefarm7/claude-clone-jr/releases).
 
-1. Baixe `Jarvis_Core-0.1.0-x86_64.AppImage` (ou gere com `./scripts/build-appimage.sh`).
-2. Dê permissão: `chmod +x Jarvis_Core-0.1.0-x86_64.AppImage`.
-3. Abra a interface: `./Jarvis_Core-0.1.0-x86_64.AppImage`.
-4. Use a CLI pelo mesmo arquivo: `./Jarvis_Core-0.1.0-x86_64.AppImage doctor`.
+| Sistema | Arquivo | Como usar |
+|---|---|---|
+| Linux (LMDE, Debian, Ubuntu, Fedora…) | `Jarvis_Core-<versão>-x86_64.AppImage` | `chmod +x` e execute. Sem argumentos abre a GUI; com argumentos é a CLI. |
+| Linux (binários soltos) | `Jarvis_Core-<versão>-linux-x86_64.tar.gz` | `jarvis` e `jarvis-gui` |
+| Windows 10/11 (x64) | `Jarvis_Core-<versão>-windows-x86_64.zip` | extraia; abra `jarvis-gui.exe`; CLI: `.\jarvis.exe` |
+| macOS 11+ (Apple Silicon e Intel) | `Jarvis_Core-<versão>-macos-universal.dmg` | arraste **Jarvis Core** para Aplicativos |
+| macOS (CLI) | `Jarvis_Core-<versão>-macos-universal.tar.gz` | `jarvis` e `jarvis-gui` |
 
-O binário exige apenas glibc 2.31 ou mais nova (LMDE 5, 6 e 7 servem). Se o AppImage não abrir por falta de FUSE,
-rode `sudo apt install libfuse2` ou use `--appimage-extract-and-run`.
+Observações:
+1. **Linux:** o AppImage exige glibc 2.31 ou mais nova. Sem FUSE, use `--appimage-extract-and-run`
+   ou `sudo apt install libfuse2`.
+2. **Windows:** o SmartScreen pode avisar (executável sem assinatura comercial). Clique em
+   “Mais informações” → “Executar assim mesmo”.
+3. **macOS:** o app tem assinatura ad hoc, sem notarização. Na primeira vez, clique com o botão direito
+   em **Jarvis Core** → **Abrir**, ou rode `xattr -dr com.apple.quarantine "/Applications/Jarvis Core.app"`.
+   A CLI fica em `/Applications/Jarvis Core.app/Contents/MacOS/jarvis`.
+4. Verifique a integridade com `SHA256SUMS.txt`.
 
-### Opção 2 — a partir do código
+### Compilar a partir do código
 
-1. Instale o Rust: <https://rustup.rs>.
-2. Instale as dependências de sistema (o script só **mostra** os comandos; ele não usa sudo):
-   `./scripts/deps-lmde.sh`.
-3. Compile: `cargo build --release`.
-4. Os binários ficam em `target/release/jarvis` e `target/release/jarvis-gui`.
+1. Instale o Rust: <https://rustup.rs> (a versão é fixada em `rust-toolchain.toml`).
+2. Compile: `cargo build --release`.
+3. Pacotes:
+   - Linux: `./scripts/build-appimage.sh`
+   - macOS: `./scripts/build-macos.sh`
+   - Windows: `pwsh -File scripts/build-windows.ps1`
+
+### Diferenças entre sistemas
+
+| Recurso | Linux | macOS | Windows |
+|---|---|---|---|
+| Terminal do agente | bash | bash | PowerShell |
+| Isolamento do terminal | bubblewrap | `sandbox-exec` (nativo) | não disponível (aprovações continuam obrigatórias) |
+| Lixeira (`delete_path`) | freedesktop | Lixeira do Finder | Lixeira do Windows |
+| Voz (síntese) | espeak-ng / piper | `say` nativo / piper | SAPI nativo / piper |
+| Microfone | arecord / ffmpeg | ffmpeg (AVFoundation) | ffmpeg (DirectShow) |
+| Navegador headless | Chromium/Chrome | Chrome/Chromium/Edge | Edge/Chrome |
+| PDF | poppler, ou leitor interno | poppler (brew), ou leitor interno | poppler, ou leitor interno |
+| Configuração | `~/.config/jarvis` | `~/Library/Application Support/jarvis` | `%APPDATA%\jarvis` |
 
 ## Primeiros passos
 
-1. Crie a configuração: `jarvis config init` (arquivo `~/.config/jarvis/config.toml`, permissão 0600).
+1. Crie a configuração: `jarvis config init` (veja o caminho com `jarvis config path`).
 2. Verifique o ambiente: `jarvis doctor`.
 3. Configure um modelo local (veja [docs/MODELOS-LOCAIS.md](docs/MODELOS-LOCAIS.md)):
    - compile o llama.cpp;
@@ -136,7 +162,7 @@ JARVIS_TEST_GGUF=/tmp/tiny.gguf cargo test -p jarvis-tools --test local_llama
 
 ## Estado atual e limitações
 
-Testado neste repositório (Ubuntu 24.04 x86_64 em container, sem GPU): veja o resumo em [ROADMAP.md](ROADMAP.md).
+Os testes automatizados rodam no CI em Linux, macOS e Windows a cada commit. Resumo em [ROADMAP.md](ROADMAP.md).
 
 - A qualidade das decisões depende do modelo. Modelos locais de 7–8B funcionam para tarefas simples e médias;
   tarefas longas rendem mais com modelos maiores ou por API.

@@ -22,6 +22,8 @@ fn cfg_private(ws: &std::path::Path) -> Config {
     let mut c = Config::default();
     c.permissions.workspace_roots = vec![ws.to_string_lossy().into()];
     c.web.allow_private_hosts = true;
+    // CI runners (Ubuntu 24.04) block Chromium's own sandbox.
+    c.web.browser_no_sandbox_fallback = true;
     c
 }
 

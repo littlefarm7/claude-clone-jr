@@ -131,6 +131,8 @@ pub struct WebConfig {
     pub allow_private_hosts: bool,
     pub max_fetch_bytes: usize,
     pub chromium: Option<String>,
+    /// Retry the headless browser with `--no-sandbox` when the OS forbids its sandbox.
+    pub browser_no_sandbox_fallback: bool,
 }
 
 impl Default for WebConfig {
@@ -140,6 +142,7 @@ impl Default for WebConfig {
             allow_private_hosts: false,
             max_fetch_bytes: 3_000_000,
             chromium: None,
+            browser_no_sandbox_fallback: false,
         }
     }
 }

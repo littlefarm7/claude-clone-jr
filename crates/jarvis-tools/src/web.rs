@@ -494,7 +494,25 @@ impl Tool for Browser {
             ctx,
             false,
         );
-        let res = crate::shell::run_command(cmd, Duration::from_secs(60), ctx).await?;
+        let mut res = crate::shell::run_command(cmd, Duration::from_secs(60), ctx).await?;
+        if !res.ok() && res.stderr.contains("No usable sandbox") {
+            // Some distros (e.g. Ubuntu 24.04 AppArmor) forbid Chromium's namespace sandbox.
+            if !ctx.cfg.web.browser_no_sandbox_fallback {
+                bail!(
+                    "o Chromium não conseguiu criar seu sandbox neste sistema. Defina \
+                     web.browser_no_sandbox_fallback = true para permitir rodar sem ele (menos seguro)"
+                );
+            }
+            a.insert(0, "--no-sandbox".into());
+            let cmd = crate::shell::build_command(
+                &chrome.to_string_lossy(),
+                &a,
+                &ctx.guard.cwd(),
+                ctx,
+                false,
+            );
+            res = crate::shell::run_command(cmd, Duration::from_secs(60), ctx).await?;
+        }
         if let Some(p) = out_path {
             if !p.exists() {
                 bail!(
