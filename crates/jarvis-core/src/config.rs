@@ -20,6 +20,7 @@ pub struct Config {
     pub web: WebConfig,
     pub local: LocalConfig,
     pub memory: MemoryConfig,
+    pub voice: VoiceConfig,
     pub models: Vec<ModelConfig>,
     pub mcp_servers: Vec<McpServerConfig>,
     pub custom_tools: Vec<CustomToolConfig>,
@@ -159,6 +160,20 @@ pub struct MemoryConfig {
     pub auto_recall: bool,
 }
 
+/// Speech: whisper.cpp for STT, piper or espeak-ng for TTS (all local).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct VoiceConfig {
+    pub whisper_bin: Option<String>,
+    /// ggml model for whisper.cpp, e.g. ~/modelos/ggml-small.bin
+    pub whisper_model: Option<String>,
+    pub piper_bin: Option<String>,
+    /// .onnx voice for piper, e.g. ~/modelos/pt_BR-faber-medium.onnx
+    pub piper_model: Option<String>,
+    /// espeak-ng voice when piper is not configured
+    pub espeak_voice: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpServerConfig {
     pub name: String,
@@ -196,6 +211,7 @@ impl Default for Config {
             web: WebConfig::default(),
             local: LocalConfig::default(),
             memory: MemoryConfig { embedding_model: None, auto_recall: true },
+            voice: VoiceConfig::default(),
             models: default_models(),
             mcp_servers: vec![],
             custom_tools: vec![],
@@ -354,6 +370,12 @@ autostart = true
 
 [memory]
 auto_recall = true
+# embedding_model = "local"      # usa /v1/embeddings do modelo (llama-server --embedding)
+
+[voice]
+# whisper_model = "~/modelos/ggml-small.bin"
+# piper_model = "~/modelos/pt_BR-faber-medium.onnx"
+espeak_voice = "pt-br"
 
 [[models]]
 name = "local"

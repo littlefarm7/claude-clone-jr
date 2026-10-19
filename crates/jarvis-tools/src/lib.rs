@@ -5,6 +5,7 @@ pub mod delegate;
 pub mod docs;
 pub mod fs;
 pub mod mcp;
+pub mod media;
 pub mod memory_tools;
 pub mod ooxml;
 pub mod pdfgen;
@@ -12,6 +13,7 @@ pub mod runtime;
 pub mod shell;
 pub mod skills;
 pub mod testutil;
+pub mod voice;
 pub mod web;
 
 use jarvis_core::config::Config;
@@ -26,5 +28,7 @@ pub fn builtin_registry(_cfg: &Config) -> ToolRegistry {
     delegate::register(&mut r);
     web::register(&mut r);
     docs::register(&mut r);
+    media::register(&mut r);
+    voice::register(&mut r);
     r
 }
