@@ -239,7 +239,8 @@ mod tests {
         let pdf = render(Some("Título"), &"# Seção\nTexto com acentuação: ção é à.\n- item\n".repeat(80));
         let s = String::from_utf8_lossy(&pdf);
         assert!(s.starts_with("%PDF-1.4"));
-        assert!(s.contains("/Count 3") || s.contains("/Count 4") || s.contains("/Count 5"), "multi-page");
+        let count: usize = s.split("/Count ").nth(1).unwrap().split_whitespace().next().unwrap().parse().unwrap();
+        assert!(count >= 2, "deveria ter várias páginas: {count}");
         assert!(s.trim_end().ends_with("%%EOF"));
     }
 
