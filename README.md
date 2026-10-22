@@ -6,7 +6,11 @@ usando ferramentas reais: arquivos, terminal, web, navegador, documentos (PDF, D
 áudio, vídeo, imagens, memória persistente, workflows, agendamentos, MCP e skills.
 A CLI `claudio` e a interface gráfica `claudio-gui` usam o mesmo núcleo.
 
-![Interface gráfica: tarefa concluída e verificada](docs/img/chat-tarefa-verificada.png)
+**Feito para qualquer pessoa:** na primeira vez, um assistente pergunta só onde a IA vai funcionar
+(no computador, grátis, ou na nuvem) e faz o resto sozinho — detecta memória e placa de vídeo, escolhe o
+modelo, instala e baixa tudo com uma barra de progresso. Nenhum termo técnico é necessário.
+
+![Conversa: o Claudio mostra cada ação em linguagem simples](docs/img/conversa-escuro.png)
 
 - **Modelos locais** via llama.cpp (`llama-server`), sem conta e sem custo por uso. O Claudio inicia o servidor sozinho.
 - **Modelos por API** (Anthropic, Gemini, OpenAI e compatíveis), opcionais, com consentimento explícito.
@@ -64,37 +68,49 @@ Observações:
 
 ## Primeiros passos
 
-1. Abra o aplicativo (`claudio-gui`, ou o AppImage/app/zip do seu sistema).
-2. Clique em **⚙ Configurações** e escolha **uma** das opções abaixo.
+1. Abra o aplicativo (o AppImage, o app do macOS ou `claudio-gui.exe` no Windows).
+2. Na tela de boas-vindas, escolha **uma** opção:
 
-### Opção A — usar uma API de IA
+![Boas-vindas: escolha onde a IA vai funcionar](docs/img/boas-vindas.png)
 
-1. Aba **Modelos por API**.
-2. Escolha o provedor: Anthropic (Claude), OpenAI, Google Gemini, OpenRouter, Groq, Ollama, LM Studio
-   ou outro compatível com OpenAI.
-3. Confira o modelo (há sugestões) e cole a **chave de API** (o link “obter chave” abre a página do provedor).
-4. Clique em **Testar conexão**. Se aparecer “✔ respondeu”, clique em **Adicionar** e depois **Salvar**.
+### Opção A — No meu computador (grátis e privado)
 
-A chave fica num arquivo separado e protegido (`secrets/api_keys.toml`, permissão 0600), nunca no
-`config.toml`, e as ferramentas do agente não conseguem lê-lo. Na primeira tarefa com um provedor remoto,
-o Claudio pede sua autorização para enviar dados.
+1. Clique em **No meu computador**. O Claudio mostra o que encontrou (memória, placa de vídeo, espaço livre)
+   e qual IA vai instalar.
+2. Clique em **Instalar e começar**. Ele baixa o motor de IA e o modelo (2 a 5 GB, uma vez só).
+   Se a internet cair, o download continua de onde parou.
+3. Pronto. Nada do que você escreve sai do computador.
 
-![Configurações: modelos por API](docs/img/configuracoes-api.png)
+Como ele escolhe: 8,5 GB de memória ou mais → Qwen2.5 7B; de 5 a 8 GB → Qwen2.5 3B; menos → Qwen2.5 1.5B.
+Com placa AMD/NVIDIA e Vulkan instalado, usa a placa de vídeo; no Mac com chip Apple, usa o Metal.
+Se a placa de vídeo falhar ao iniciar, ele volta sozinho para o processador.
 
-### Opção B — baixar um modelo local (sem conta, sem custo, sem internet depois)
+![IA no computador: detecção automática](docs/img/ia-no-computador.png)
 
-1. Aba **Modelos locais**.
-2. Em **1. Motor local**, clique em **Instalar llama.cpp** (baixa a versão oficial do GitHub).
-   Escolha **GPU (Vulkan)** se tiver placa AMD/Intel/NVIDIA; no macOS a GPU (Metal) já vem ativada.
-   Se você já compilou o llama.cpp, indique o caminho do `llama-server`.
-3. Em **2. Escolha um modelo**, clique em **Baixar** no modelo desejado. A tela mostra o tamanho e se
-   cabe na memória do computador. O download pode ser pausado e retomado, e é verificado (SHA‑256).
-   Recomendado para 16 GB de RAM: **Qwen2.5 7B Instruct**.
-4. Clique em **Salvar**. O Claudio inicia o modelo sozinho quando você enviar uma mensagem.
+### Opção B — Na nuvem (mais rápida, precisa de uma conta)
 
-Também é possível baixar de qualquer URL `.gguf` ou usar um arquivo `.gguf` que já está no computador.
+1. Clique em **Na nuvem** e escolha o serviço: **Claude**, **ChatGPT**, **Gemini** ou **OpenRouter**.
+2. Siga os passos da tela: **Abrir o site** → criar a chave → copiar.
+3. Cole a chave e clique em **Conectar**. O Claudio testa na hora e avisa em português se algo estiver errado
+   (chave incompleta, sem créditos, sem internet).
 
-![Configurações: modelos locais](docs/img/configuracoes-modelos-locais.png)
+A chave fica só neste computador, num arquivo protegido separado da configuração, que as ferramentas do
+agente não conseguem ler. Conectar é a sua autorização para enviar as conversas a esse serviço.
+
+![IA na nuvem: passos simples](docs/img/ia-na-nuvem.png)
+
+### No dia a dia
+
+- Escreva o pedido e tecle **Enter** (Shift+Enter pula linha). Há sugestões na tela inicial.
+- Antes de criar, mudar ou apagar algo, o Claudio **pede permissão** explicando o que vai acontecer.
+- Os arquivos que ele cria ficam na pasta **Documentos/Claudio**.
+- Tarefas longas podem ser pausadas e continuadas com **Continuar de onde parou**.
+- **Configurações** tem só o essencial (IA, pasta, permissões, privacidade, tema claro/escuro).
+  Modelos, chaves e limites manuais ficam em **Mostrar opções avançadas**.
+
+![Pedido de permissão](docs/img/permissao.png)
+
+![Tema claro](docs/img/conversa-claro.png)
 
 ### Pelo terminal (mesmas opções)
 
@@ -110,7 +126,11 @@ claudio models use claude                      # troca o modelo padrão
 ```
 
 Depois: `claudio doctor` mostra o que está instalado, e `claudio` abre a conversa no terminal.
-Por padrão o agente só grava dentro de `~/claudio-work` (altere em **Configurações → Geral**).
+Por padrão o agente só grava dentro da pasta de trabalho (`Documentos/Claudio` quando configurado pelo
+assistente; `~/claudio-work` na CLI). Altere em **Configurações**.
+
+Para redes que bloqueiam GitHub ou Hugging Face, defina espelhos: `CLAUDIO_LLAMA_RELEASES_API`
+(API de releases no formato do GitHub) e `CLAUDIO_MODELS_MIRROR` (URL que serve os `.gguf` pelo nome).
 
 ## Comandos principais
 

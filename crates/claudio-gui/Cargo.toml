@@ -21,6 +21,8 @@ chrono.workspace = true
 image = { version = "0.25", default-features = false, features = ["png"] }
 eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "accesskit"] }
 egui_extras = { version = "0.31", default-features = false }
+# Lets links (e.g. "Abrir o site") open in the default browser.
+egui-winit = { version = "0.31", default-features = false, features = ["links"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 eframe = { version = "0.31", default-features = false, features = ["x11", "wayland"] }

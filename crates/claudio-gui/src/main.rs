@@ -2,7 +2,10 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 //! `claudio-gui` — desktop interface (egui) over the same core as the CLI.
 
+mod friendly;
+mod onboarding;
 mod settings;
+mod theme;
 
 use std::sync::Arc;
 
@@ -10,14 +13,15 @@ use anyhow::Result;
 use async_trait::async_trait;
 use claudio_core::config::Config;
 use claudio_core::events::{AgentEvent, ApprovalDecision, ApprovalRequest, Approver, EventSink};
-use claudio_core::permissions::Risk;
 use claudio_core::plan::{Plan, StepStatus};
+use claudio_core::secrets::Secrets;
 use claudio_core::store::{MemoryRecord, SessionRecord, SessionStatus};
 use claudio_core::RunOutcome;
 use claudio_llm::router::Availability;
 use claudio_llm::{Part, Role};
 use claudio_tools::runtime::Runtime;
-use eframe::egui::{self, Color32, RichText};
+use claudio_tools::setup;
+use eframe::egui::{self, Color32, CornerRadius, Margin, RichText, Stroke, Vec2};
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
@@ -58,6 +62,14 @@ impl Approver for GuiApprover {
     }
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum Tone {
+    Muted,
+    Success,
+    Warning,
+    Error,
+}
+
 #[derive(Clone)]
 enum ChatItem {
     User(String),
@@ -68,14 +80,18 @@ enum ChatItem {
         ok: Option<bool>,
         preview: String,
     },
-    Note(String, Color32),
+    Note(String, Tone),
+    /// The task stopped early and can be continued.
+    Continue(String),
+    /// No AI is configured: offer the setup assistant.
+    SetupNeeded,
 }
 
 #[derive(PartialEq)]
 enum RightTab {
     Plan,
-    Activity,
     Memory,
+    Log,
 }
 
 struct App {
@@ -96,14 +112,19 @@ struct App {
     running: Option<CancellationToken>,
     approvals: Vec<(ApprovalRequest, Option<oneshot::Sender<ApprovalDecision>>)>,
     tab: RightTab,
+    show_details: bool,
+    /// The agent is checking its own result: keep that out of the chat.
+    verifying: bool,
     status: String,
     search: String,
     settings: settings::Settings,
+    onboarding: onboarding::Onboarding,
+    logo: Option<egui::TextureHandle>,
 }
 
 impl App {
     fn new(cc: &eframe::CreationContext, tokio: tokio::runtime::Runtime, rt: Arc<Runtime>) -> Self {
-        cc.egui_ctx.set_visuals(egui::Visuals::dark());
+        theme::apply(&cc.egui_ctx, &rt.cfg.ui.theme);
         let (tx, rx) = mpsc::unbounded_channel();
         let model = rt.cfg.default_model.clone().unwrap_or_else(|| {
             rt.cfg
@@ -113,8 +134,22 @@ impl App {
                 .unwrap_or_default()
         });
         let settings = settings::Settings::new(&rt.cfg);
+        let first_run = !rt.cfg.ui.onboarded && !setup::ai_ready(&rt.cfg);
+        let logo = image::load_from_memory(include_bytes!(
+            "../../../packaging/icons/claudio-code-256.png"
+        ))
+        .ok()
+        .map(|i| {
+            let i = i.to_rgba8();
+            let img = egui::ColorImage::from_rgba_unmultiplied(
+                [i.width() as usize, i.height() as usize],
+                i.as_raw(),
+            );
+            cc.egui_ctx.load_texture("logo", img, Default::default())
+        });
         let mut app = Self {
             settings,
+            onboarding: onboarding::Onboarding::new(first_run),
             tokio,
             rt,
             tx,
@@ -132,11 +167,14 @@ impl App {
             running: None,
             approvals: Vec::new(),
             tab: RightTab::Plan,
-            status: "pronto".into(),
+            show_details: false,
+            verifying: false,
+            status: String::new(),
             search: String::new(),
+            logo,
         };
         for w in app.rt.warnings.clone() {
-            app.items.push(ChatItem::Note(w, Color32::YELLOW));
+            app.activity.push(format!("aviso: {w}"));
         }
         app.refresh_lists();
         app.refresh_availability(&cc.egui_ctx);
@@ -171,6 +209,23 @@ impl App {
         });
     }
 
+    /// Whether the selected AI still needs to be set up.
+    fn needs_setup(&self) -> bool {
+        !setup::ai_ready(&self.rt.cfg)
+            && self.rt.cfg.model(&self.model).is_none_or(|m| m.is_local())
+    }
+
+    fn new_chat(&mut self) {
+        if self.running.is_some() {
+            return;
+        }
+        self.session_id = None;
+        self.items.clear();
+        self.activity.clear();
+        self.plan = Plan::default();
+        self.status.clear();
+    }
+
     fn load_session(&mut self, id: &str) {
         self.items.clear();
         self.activity.clear();
@@ -179,23 +234,33 @@ impl App {
         };
         self.plan = rec.plan.clone();
         self.session_id = Some(rec.id.clone());
+        // The self-check phase is internal: keep it out of the conversation.
+        let mut verifying = false;
         for m in self.rt.store.messages(&rec.id).unwrap_or_default() {
             match m.role {
                 Role::System => {}
                 Role::User => {
                     let t = m.text_content();
                     if t.starts_with(claudio_core::agent::SYS_PREFIX) {
-                        self.items.push(ChatItem::Note(t, Color32::GRAY));
+                        verifying = t.contains("FASE DE VERIFICAÇÃO");
+                        self.activity.push(t);
                     } else {
+                        verifying = false;
                         self.items.push(ChatItem::User(t));
                     }
                 }
+                Role::Assistant if verifying => {}
+                Role::Tool if verifying => {}
                 Role::Assistant => {
                     let t = m.text_content();
                     if !t.trim().is_empty() {
                         self.items.push(ChatItem::Assistant(t));
                     }
-                    for c in m.tool_calls() {
+                    for c in m
+                        .tool_calls()
+                        .into_iter()
+                        .filter(|c| c.name != "update_plan")
+                    {
                         self.items.push(ChatItem::Tool {
                             name: c.name,
                             summary: c.arguments.to_string().chars().take(160).collect(),
@@ -222,7 +287,10 @@ impl App {
                 }
             }
         }
-        self.status = format!("sessão {} — {}", &rec.id[..8], rec.status.as_str());
+        if rec.status.resumable() {
+            self.items.push(ChatItem::Continue(rec.id.clone()));
+        }
+        self.status.clear();
     }
 
     fn send(&mut self, ctx: &egui::Context) {
@@ -231,10 +299,11 @@ impl App {
             return;
         }
         self.input.clear();
+        self.items.retain(|i| !matches!(i, ChatItem::Continue(_)));
         self.items.push(ChatItem::User(text.clone()));
         let cancel = CancellationToken::new();
         self.running = Some(cancel.clone());
-        self.status = "trabalhando…".into();
+        self.status = "Pensando…".into();
         let rt = self.rt.clone();
         let tx = self.tx.clone();
         let model = self.model.clone();
@@ -276,35 +345,41 @@ impl App {
             UiMsg::Approval(req, tx) => self.approvals.push((req, Some(tx))),
             UiMsg::Done(r) => {
                 self.running = None;
+                self.verifying = false;
+                self.status.clear();
                 match r {
                     Ok(out) => {
                         self.session_id = Some(out.session_id.clone());
-                        let (label, color) = match out.status {
-                            SessionStatus::Completed => {
-                                ("concluído e verificado", Color32::LIGHT_GREEN)
+                        match out.status {
+                            SessionStatus::Completed => self.items.push(ChatItem::Note(
+                                "✔ Pronto — o resultado foi conferido.".into(),
+                                Tone::Success,
+                            )),
+                            SessionStatus::CompletedUnverified => {}
+                            SessionStatus::Cancelled => self
+                                .items
+                                .push(ChatItem::Note("Tarefa interrompida.".into(), Tone::Muted)),
+                            SessionStatus::LimitReached | SessionStatus::Interrupted => {
+                                self.items.push(ChatItem::Note(
+                                    "A tarefa ficou longa e eu fiz uma pausa.".into(),
+                                    Tone::Warning,
+                                ));
+                                self.items.push(ChatItem::Continue(out.session_id.clone()));
                             }
-                            SessionStatus::CompletedUnverified => {
-                                ("concluído (sem verificação)", Color32::LIGHT_YELLOW)
-                            }
-                            SessionStatus::Cancelled => ("cancelado", Color32::LIGHT_YELLOW),
-                            SessionStatus::LimitReached => {
-                                ("parado por limite — use Retomar", Color32::LIGHT_YELLOW)
-                            }
-                            _ => ("falhou", Color32::LIGHT_RED),
-                        };
-                        if !matches!(
-                            out.status,
-                            SessionStatus::Completed | SessionStatus::CompletedUnverified
-                        ) {
-                            self.items
-                                .push(ChatItem::Note(format!("{label}: {}", out.summary), color));
+                            _ => self.items.push(ChatItem::Note(
+                                format!("Não consegui terminar: {}", out.summary),
+                                Tone::Error,
+                            )),
                         }
-                        self.status = label.into();
                     }
                     Err(e) => {
-                        self.items
-                            .push(ChatItem::Note(format!("erro: {e}"), Color32::LIGHT_RED));
-                        self.status = "erro".into();
+                        self.activity.push(format!("erro: {e}"));
+                        let msg = setup::friendly_error(&e);
+                        if msg.contains("Configurar IA") {
+                            self.items.push(ChatItem::SetupNeeded);
+                        } else {
+                            self.items.push(ChatItem::Note(msg, Tone::Error));
+                        }
                     }
                 }
                 self.refresh_lists();
@@ -319,12 +394,15 @@ impl App {
                         .activity
                         .push(format!("{ts} modelo {model} ({reason})")),
                     AgentEvent::ModelCall { n, phase } => {
-                        self.status = format!("pensando ({phase}, chamada {n})…");
                         self.activity
                             .push(format!("{ts} chamada ao modelo #{n} ({phase})"));
                     }
                     AgentEvent::AssistantText { text } => {
-                        self.items.push(ChatItem::Assistant(text))
+                        if self.verifying {
+                            self.activity.push(format!("{ts} verificação: {text}"));
+                        } else {
+                            self.items.push(ChatItem::Assistant(text))
+                        }
                     }
                     AgentEvent::PlanUpdated { plan } => self.plan = plan,
                     AgentEvent::ToolCall {
@@ -335,6 +413,10 @@ impl App {
                     } => {
                         self.activity
                             .push(format!("{ts} ▶ {name} [{}] {summary}", risk.label()));
+                        if self.verifying {
+                            return;
+                        }
+                        self.status = format!("{}…", friendly::tool(&name).1);
                         self.items.push(ChatItem::Tool {
                             name,
                             summary,
@@ -356,6 +438,9 @@ impl App {
                             "{ts}   {} {name} ({ms} ms)",
                             if ok { "✔" } else { "✖" }
                         ));
+                        if !self.verifying {
+                            self.status = "Pensando…".into();
+                        }
                         if let Some(ChatItem::Tool {
                             ok: o, preview: p, ..
                         }) = self.items.iter_mut().rev().find(
@@ -367,26 +452,29 @@ impl App {
                     }
                     AgentEvent::Warning { message } => {
                         self.activity.push(format!("{ts} ! {message}"));
-                        self.items
-                            .push(ChatItem::Note(format!("! {message}"), Color32::YELLOW));
                     }
-                    AgentEvent::VerificationStarted { round } => self.items.push(ChatItem::Note(
-                        format!("» verificando o resultado (rodada {round})"),
-                        Color32::LIGHT_BLUE,
-                    )),
+                    AgentEvent::VerificationStarted { round } => {
+                        self.verifying = true;
+                        self.status = "Conferindo se ficou tudo certo…".into();
+                        self.activity
+                            .push(format!("{ts} verificação (rodada {round})"));
+                    }
                     AgentEvent::VerificationResult { passed, notes } => {
-                        self.items.push(ChatItem::Note(
+                        self.verifying = false;
+                        self.activity.push(format!(
+                            "{ts} verificação: {}",
                             if passed {
-                                "» verificação: PASS".into()
+                                "PASS".into()
                             } else {
-                                format!("» verificação: FAIL — {notes}")
-                            },
-                            if passed {
-                                Color32::LIGHT_GREEN
-                            } else {
-                                Color32::LIGHT_RED
-                            },
-                        ))
+                                format!("FAIL — {notes}")
+                            }
+                        ));
+                        if !passed {
+                            self.items.push(ChatItem::Note(
+                                "Encontrei um problema no resultado e vou tentar corrigir.".into(),
+                                Tone::Warning,
+                            ));
+                        }
                     }
                     AgentEvent::LimitReached { limit } => {
                         self.activity.push(format!("{ts} limite: {limit}"))
@@ -404,8 +492,10 @@ impl App {
         if self.running.is_some() {
             return;
         }
+        self.items.retain(|i| !matches!(i, ChatItem::Continue(_)));
         let cancel = CancellationToken::new();
         self.running = Some(cancel.clone());
+        self.status = "Continuando…".into();
         let rt = self.rt.clone();
         let tx = self.tx.clone();
         let model = self.model.clone();
@@ -430,11 +520,11 @@ impl App {
         });
     }
 
-    /// Save the settings, then rebuild the runtime with the new configuration.
-    fn apply_settings(&mut self, ctx: &egui::Context) {
+    /// Save `cfg` (and the keys), then rebuild the runtime with it.
+    fn apply_config(&mut self, ctx: &egui::Context, cfg: &Config, secrets: &Secrets) -> bool {
         let result = (|| -> anyhow::Result<Config> {
-            let path = self.settings.draft.save()?;
-            self.settings.secrets.save_to(&self.settings.secrets_path)?;
+            let path = cfg.save()?;
+            secrets.save_to(&claudio_core::secrets::secrets_path_for(cfg))?;
             let (cfg, _) = Config::load_with_secrets(Some(&path))?;
             Ok(cfg)
         })();
@@ -442,10 +532,10 @@ impl App {
             Ok(c) => c,
             Err(e) => {
                 self.items.push(ChatItem::Note(
-                    format!("erro ao salvar: {e:#}"),
-                    Color32::LIGHT_RED,
+                    format!("Não consegui salvar as configurações: {e:#}"),
+                    Tone::Error,
                 ));
-                return;
+                return false;
             }
         };
         self.tokio.block_on(self.rt.shutdown());
@@ -455,18 +545,81 @@ impl App {
                 if let Some(d) = self.rt.cfg.default_model.clone() {
                     self.model = d;
                 }
+                theme::apply(ctx, &self.rt.cfg.ui.theme);
                 self.settings.reset(&self.rt.cfg);
-                self.items.push(ChatItem::Note(
-                    "Configurações salvas.".into(),
-                    Color32::LIGHT_GREEN,
-                ));
                 self.refresh_availability(ctx);
                 self.refresh_lists();
+                true
             }
-            Err(e) => self.items.push(ChatItem::Note(
-                format!("erro ao aplicar: {e:#}"),
-                Color32::LIGHT_RED,
-            )),
+            Err(e) => {
+                self.items.push(ChatItem::Note(
+                    format!("Não consegui aplicar as configurações: {e:#}"),
+                    Tone::Error,
+                ));
+                false
+            }
+        }
+    }
+
+    fn apply_settings(&mut self, ctx: &egui::Context) {
+        let cfg = self.settings.draft.clone();
+        let secrets = self.settings.secrets.clone();
+        if self.apply_config(ctx, &cfg, &secrets) {
+            self.settings.saved_message();
+        }
+    }
+
+    fn finish_onboarding(&mut self, ctx: &egui::Context, outcome: onboarding::Outcome) {
+        match outcome {
+            onboarding::Outcome::None => {}
+            onboarding::Outcome::Skipped => {
+                let mut cfg = (*self.rt.cfg).clone();
+                cfg.ui.onboarded = true;
+                let _ = cfg.save();
+            }
+            onboarding::Outcome::Finished { cfg, key, cloud } => {
+                let mut cfg = *cfg;
+                cfg.ui.onboarded = true;
+                // Default work folder in Documents, easy to find.
+                if cfg.permissions.workspace_roots == ["~/claudio-work"] {
+                    let ws = setup::default_workspace();
+                    let _ = std::fs::create_dir_all(&ws);
+                    cfg.permissions.workspace_roots = vec![ws.to_string_lossy().into_owned()];
+                }
+                let path = claudio_core::secrets::secrets_path_for(&cfg);
+                let mut secrets = Secrets::load_from(&path).unwrap_or_default();
+                if let Some((name, k)) = key {
+                    secrets.set(&name, &k);
+                }
+                if !self.apply_config(ctx, &cfg, &secrets) {
+                    return;
+                }
+                // Choosing a cloud service in the assistant is the user's explicit consent.
+                if let Some(entry) = cloud {
+                    let _ = self
+                        .rt
+                        .store
+                        .grant_consent(&claudio_core::consent::consent_key(&entry));
+                }
+                self.items.retain(|i| !matches!(i, ChatItem::SetupNeeded));
+                self.items.push(ChatItem::Note(
+                    format!(
+                        "✔ Tudo pronto! Sua IA: {}. Os arquivos que eu criar ficam em {}.",
+                        setup::ai_label(&self.rt.cfg, &self.model),
+                        self.rt.guard.cwd().display()
+                    ),
+                    Tone::Success,
+                ));
+                // Warm up the local AI so the first answer comes faster.
+                if let Some(m) = self.rt.cfg.model(&self.model).cloned() {
+                    if m.gguf_path.is_some() {
+                        let rt = self.rt.clone();
+                        self.tokio.spawn(async move {
+                            let _ = rt.start_local(&m).await;
+                        });
+                    }
+                }
+            }
         }
     }
 
@@ -475,28 +628,51 @@ impl App {
             return;
         };
         let req = req.clone();
+        let p = theme::current(ctx);
         let mut decision = None;
-        egui::Window::new(RichText::new("Aprovação necessária").strong())
-            .collapsible(false)
-            .resizable(true)
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        let remote = req.tool == "remote_model";
+        let title = if remote {
+            "Enviar sua conversa para a nuvem?"
+        } else {
+            friendly::approval_title(&req.tool, req.risk)
+        };
+        egui::Modal::new(egui::Id::new("approval"))
+            .frame(theme::modal_frame(ctx))
             .show(ctx, |ui| {
-                let color = match req.risk {
-                    Risk::Admin | Risk::Destructive => Color32::LIGHT_RED,
-                    Risk::Write | Risk::Execute => Color32::LIGHT_YELLOW,
-                    _ => Color32::LIGHT_BLUE,
-                };
+                ui.set_width(460.0_f32.min(ctx.screen_rect().width() - 80.0));
+                let icon = if remote { "☁" } else { friendly::tool(&req.tool).0 };
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(icon).size(28.0));
+                    ui.add(egui::Label::new(RichText::new(title).size(19.0).strong()).wrap());
+                });
                 ui.label(
-                    RichText::new(format!("{} — ação de {}", req.tool, req.risk.label()))
-                        .color(color)
-                        .strong(),
+                    RichText::new(if remote {
+                        "Para responder, a IA na nuvem recebe o texto da conversa e dos arquivos usados."
+                    } else {
+                        friendly::risk_hint(req.risk)
+                    })
+                    .color(p.muted),
                 );
-                ui.label(format!("Motivo: {}", req.reason));
-                ui.separator();
-                ui.label(RichText::new(&req.summary).monospace());
-                egui::CollapsingHeader::new("Argumentos").show(ui, |ui| {
+                theme::card(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    ui.label(RichText::new("O que vai acontecer:").small().color(p.muted));
+                    ui.add(egui::Label::new(RichText::new(&req.summary).monospace()).wrap());
+                });
+                egui::CollapsingHeader::new(
+                    RichText::new("Detalhes técnicos").small().color(p.muted),
+                )
+                .show(ui, |ui| {
+                    ui.label(
+                        RichText::new(format!(
+                            "{} · {} · {}",
+                            req.tool,
+                            req.risk.label(),
+                            req.reason
+                        ))
+                        .small(),
+                    );
                     egui::ScrollArea::vertical()
-                        .max_height(200.0)
+                        .max_height(160.0)
                         .show(ui, |ui| {
                             ui.label(
                                 RichText::new(
@@ -507,16 +683,20 @@ impl App {
                             );
                         });
                 });
-                ui.separator();
-                ui.horizontal(|ui| {
-                    if ui.button("✔ Permitir uma vez").clicked() {
+                ui.add_space(4.0);
+                ui.horizontal_wrapped(|ui| {
+                    if theme::primary_button(ui, "  Permitir  ").clicked() {
                         decision = Some(ApprovalDecision::AllowOnce);
                     }
-                    if req.allow_session && ui.button("Permitir nesta sessão").clicked() {
+                    let session_label = if remote {
+                        "Sempre permitir"
+                    } else {
+                        "Permitir nesta conversa"
+                    };
+                    if req.allow_session && theme::pill_button(ui, session_label).clicked() {
                         decision = Some(ApprovalDecision::AllowSession);
                     }
-                    if ui
-                        .button(RichText::new("✖ Negar").color(Color32::LIGHT_RED))
+                    if theme::pill_button(ui, RichText::new("Não permitir").color(p.danger))
                         .clicked()
                     {
                         decision = Some(ApprovalDecision::Deny);
@@ -530,130 +710,102 @@ impl App {
             }
         }
     }
-}
 
-impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        while let Ok(m) = self.rx.try_recv() {
-            self.handle(m);
-        }
-
-        egui::TopBottomPanel::top("top").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.heading("Claudio");
-                ui.separator();
-                ui.label("Modelo:");
-                let current = self.model.clone();
-                egui::ComboBox::from_id_salt("model")
-                    .selected_text(&current)
-                    .show_ui(ui, |ui| {
-                        for m in self.rt.cfg.models.clone() {
-                            let avail = self
-                                .availability
-                                .iter()
-                                .find(|(n, _)| n == &m.name)
-                                .map(|(_, a)| a.clone());
-                            let (mark, tip) = match &avail {
-                                Some(Availability::Ready) => ("●", "pronto".to_string()),
-                                Some(Availability::Startable) => {
-                                    ("◐", "inicia sob demanda".to_string())
-                                }
-                                Some(Availability::Unavailable(w)) => ("○", w.clone()),
-                                None => ("?", "verificando".into()),
-                            };
-                            let label = format!(
-                                "{mark} {} ({}{})",
-                                m.name,
-                                m.model,
-                                if m.is_local() { ", local" } else { ", remoto" }
-                            );
-                            ui.selectable_value(&mut self.model, m.name.clone(), label)
-                                .on_hover_text(tip);
-                        }
-                    });
+    fn sidebar(&mut self, ctx: &egui::Context) {
+        let p = theme::current(ctx);
+        egui::SidePanel::left("sessions")
+            .exact_width(250.0)
+            .resizable(false)
+            .frame(
+                egui::Frame::new()
+                    .fill(p.sidebar)
+                    .inner_margin(Margin::symmetric(14, 16)),
+            )
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    if let Some(t) = &self.logo {
+                        ui.add(
+                            egui::Image::new(t)
+                                .fit_to_exact_size(Vec2::splat(30.0))
+                                .corner_radius(8),
+                        );
+                    }
+                    ui.label(RichText::new("Claudio").size(21.0).strong());
+                });
+                ui.add_space(8.0);
+                let w = ui.available_width();
                 if ui
-                    .button("⟳")
-                    .on_hover_text("verificar disponibilidade")
+                    .add_enabled(
+                        self.running.is_none(),
+                        egui::Button::new(
+                            RichText::new("+   Nova conversa")
+                                .strong()
+                                .color(p.on_accent),
+                        )
+                        .fill(p.accent)
+                        .corner_radius(CornerRadius::same(14))
+                        .min_size(Vec2::new(w, 42.0)),
+                    )
                     .clicked()
                 {
-                    self.refresh_availability(ctx);
+                    self.new_chat();
                 }
-                ui.separator();
-                if ui.button("⚙ Configurações").clicked() {
-                    self.settings.reset(&self.rt.cfg);
-                    self.settings.open = true;
-                }
-                if ui.button("➕ Nova conversa").clicked() && self.running.is_none() {
-                    self.session_id = None;
-                    self.items.clear();
-                    self.activity.clear();
-                    self.plan = Plan::default();
-                }
-                ui.separator();
-                ui.label(
-                    RichText::new(format!("modo: {:?}", self.rt.cfg.permissions.mode)).small(),
+                ui.add_space(6.0);
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.search)
+                        .hint_text("🔍 Procurar conversas")
+                        .desired_width(w)
+                        .margin(Vec2::new(10.0, 8.0)),
                 );
-                ui.label(
-                    RichText::new(format!("workspace: {}", self.rt.guard.cwd().display())).small(),
-                );
-            });
-        });
-
-        egui::TopBottomPanel::bottom("status").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                if self.running.is_some() {
-                    ui.spinner();
-                }
-                ui.label(&self.status);
-                if let Some(id) = &self.session_id {
-                    ui.label(
-                        RichText::new(format!("sessão {}", &id[..8.min(id.len())]))
-                            .small()
-                            .weak(),
-                    );
-                }
-            });
-        });
-
-        egui::SidePanel::left("sessions")
-            .default_width(220.0)
-            .show(ctx, |ui| {
-                ui.heading("Histórico");
-                ui.text_edit_singleline(&mut self.search)
-                    .on_hover_text("filtrar");
-                ui.separator();
+                ui.add_space(6.0);
+                ui.label(RichText::new("Conversas").small().color(p.muted));
                 let mut open = None;
                 let mut resume = None;
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    let q = self.search.to_lowercase();
-                    for s in self
-                        .sessions
-                        .iter()
-                        .filter(|s| q.is_empty() || s.title.to_lowercase().contains(&q))
-                    {
-                        let selected = self.session_id.as_deref() == Some(&s.id);
-                        let icon = match s.status {
-                            SessionStatus::Completed => "✔",
-                            SessionStatus::CompletedUnverified => "✔?",
-                            SessionStatus::Running => "▶",
-                            SessionStatus::Failed => "✖",
-                            _ => "⏸",
-                        };
-                        let r = ui.selectable_label(
-                            selected,
-                            format!("{icon} {}", s.title.chars().take(40).collect::<String>()),
-                        );
-                        if r.clicked() {
-                            open = Some(s.id.clone());
-                        }
-                        r.context_menu(|ui| {
-                            if s.status.resumable() && ui.button("Retomar").clicked() {
-                                resume = Some(s.id.clone());
-                                ui.close_menu();
+                egui::ScrollArea::vertical()
+                    .max_height((ui.available_height() - 54.0).max(60.0))
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        let q = self.search.to_lowercase();
+                        let mut any = false;
+                        for s in self
+                            .sessions
+                            .iter()
+                            .filter(|s| s.parent_id.is_none())
+                            .filter(|s| q.is_empty() || s.title.to_lowercase().contains(&q))
+                        {
+                            any = true;
+                            let selected = self.session_id.as_deref() == Some(&s.id);
+                            let title: String = s.title.chars().take(30).collect();
+                            let r = ui.add(
+                                egui::Button::new(RichText::new(title).color(p.text))
+                                    .fill(if selected {
+                                        p.accent_soft
+                                    } else {
+                                        Color32::TRANSPARENT
+                                    })
+                                    .stroke(Stroke::NONE)
+                                    .corner_radius(CornerRadius::same(10))
+                                    .min_size(Vec2::new(w, 34.0)),
+                            );
+                            if r.clicked() {
+                                open = Some(s.id.clone());
                             }
-                        });
-                    }
-                });
+                            r.context_menu(|ui| {
+                                if s.status.resumable() && ui.button("Continuar a tarefa").clicked()
+                                {
+                                    resume = Some(s.id.clone());
+                                    ui.close_menu();
+                                }
+                            });
+                        }
+                        if !any {
+                            ui.label(
+                                RichText::new("Suas conversas aparecem aqui.")
+                                    .small()
+                                    .color(p.muted),
+                            );
+                        }
+                    });
                 if let Some(id) = open {
                     if self.running.is_none() {
                         self.load_session(&id);
@@ -663,43 +815,140 @@ impl eframe::App for App {
                     self.load_session(&id);
                     self.resume(ctx, id);
                 }
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+                    if ui
+                        .add(
+                            egui::Button::new("⚙  Configurações")
+                                .fill(Color32::TRANSPARENT)
+                                .corner_radius(CornerRadius::same(10))
+                                .min_size(Vec2::new(w, 36.0)),
+                        )
+                        .clicked()
+                    {
+                        self.settings.reset(&self.rt.cfg);
+                        self.settings.open = true;
+                    }
+                });
             });
+    }
 
-        egui::SidePanel::right("details")
-            .default_width(320.0)
+    fn top_bar(&mut self, ctx: &egui::Context) {
+        let p = theme::current(ctx);
+        egui::TopBottomPanel::top("top")
+            .frame(
+                egui::Frame::new()
+                    .fill(p.bg)
+                    .inner_margin(Margin::symmetric(18, 10)),
+            )
+            .show_separator_line(false)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.selectable_value(&mut self.tab, RightTab::Plan, "Plano");
-                    ui.selectable_value(&mut self.tab, RightTab::Activity, "Atividade");
-                    ui.selectable_value(&mut self.tab, RightTab::Memory, "Memória");
+                    let cfg = self.rt.cfg.clone();
+                    let current = setup::ai_label(&cfg, &self.model);
+                    let ready = !self.needs_setup();
+                    let dot_color = if ready { p.success } else { p.warning };
+                    egui::Frame::new()
+                        .fill(p.surface)
+                        .stroke(Stroke::new(1.0_f32, p.border))
+                        .corner_radius(20)
+                        .inner_margin(Margin::symmetric(12, 4))
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                status_dot(ui, dot_color);
+                                egui::ComboBox::from_id_salt("model")
+                                    .selected_text(RichText::new(current).strong())
+                                    .width(240.0)
+                                    .show_ui(ui, |ui| {
+                                        for m in cfg.models.iter() {
+                                            let usable = setup::ai_ready(&Config {
+                                                default_model: Some(m.name.clone()),
+                                                ..(*cfg).clone()
+                                            });
+                                            if !usable && m.name != self.model {
+                                                continue;
+                                            }
+                                            let label = setup::ai_label(&cfg, &m.name);
+                                            ui.selectable_value(
+                                                &mut self.model,
+                                                m.name.clone(),
+                                                label,
+                                            );
+                                        }
+                                        ui.separator();
+                                        if ui.button("+ Configurar outra IA…").clicked() {
+                                            self.onboarding.start();
+                                        }
+                                    });
+                            });
+                        });
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let label = if self.show_details {
+                            "Ocultar detalhes"
+                        } else {
+                            "Detalhes"
+                        };
+                        if theme::pill_button(ui, format!("ℹ  {label}")).clicked() {
+                            self.show_details = !self.show_details;
+                        }
+                    });
                 });
-                ui.separator();
+            });
+    }
+
+    fn details_panel(&mut self, ctx: &egui::Context) {
+        if !self.show_details {
+            return;
+        }
+        let p = theme::current(ctx);
+        egui::SidePanel::right("details")
+            .default_width(320.0)
+            .frame(
+                egui::Frame::new()
+                    .fill(p.sidebar)
+                    .inner_margin(Margin::same(14)),
+            )
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut self.tab, RightTab::Plan, "Passos");
+                    ui.selectable_value(&mut self.tab, RightTab::Memory, "Lembranças");
+                    ui.selectable_value(&mut self.tab, RightTab::Log, "Registro técnico");
+                });
+                ui.add_space(6.0);
                 match self.tab {
                     RightTab::Plan => {
                         let (done, total) = self.plan.progress();
                         if total == 0 {
-                            ui.label(RichText::new("Sem plano ainda.").weak());
+                            ui.label(
+                                RichText::new(
+                                    "Quando eu montar um plano, os passos aparecem aqui.",
+                                )
+                                .color(p.muted),
+                            );
                         } else {
                             ui.add(
                                 egui::ProgressBar::new(done as f32 / total as f32)
-                                    .text(format!("{done}/{total}")),
+                                    .corner_radius(6)
+                                    .fill(p.accent)
+                                    .text(format!("{done} de {total}")),
                             );
                             for s in &self.plan.steps {
                                 let (icon, color) = match s.status {
-                                    StepStatus::Completed => ("✔", Color32::LIGHT_GREEN),
-                                    StepStatus::InProgress => ("▶", Color32::LIGHT_BLUE),
-                                    StepStatus::Failed => ("✖", Color32::LIGHT_RED),
-                                    StepStatus::Skipped => ("–", Color32::GRAY),
-                                    StepStatus::Pending => ("○", Color32::GRAY),
+                                    StepStatus::Completed => ("✔", p.success),
+                                    StepStatus::InProgress => ("▶", p.accent),
+                                    StepStatus::Failed => ("✖", p.danger),
+                                    StepStatus::Skipped => ("–", p.muted),
+                                    StepStatus::Pending => ("○", p.muted),
                                 };
-                                ui.label(RichText::new(format!("{icon} {}", s.title)).color(color));
+                                ui.label(
+                                    RichText::new(format!("{icon}  {}", s.title)).color(color),
+                                );
                                 if let Some(n) = &s.note {
-                                    ui.label(RichText::new(n).small().weak());
+                                    ui.label(RichText::new(n).small().color(p.muted));
                                 }
                             }
                         }
                     }
-                    RightTab::Activity => {
+                    RightTab::Log => {
                         egui::ScrollArea::vertical()
                             .stick_to_bottom(true)
                             .show(ui, |ui| {
@@ -709,9 +958,20 @@ impl eframe::App for App {
                             });
                     }
                     RightTab::Memory => {
+                        ui.label(
+                            RichText::new("Coisas que o Claudio deve lembrar sobre você.")
+                                .small()
+                                .color(p.muted),
+                        );
                         ui.horizontal(|ui| {
-                            ui.text_edit_singleline(&mut self.new_memory);
-                            if ui.button("Salvar").clicked() && !self.new_memory.trim().is_empty() {
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.new_memory)
+                                    .hint_text("ex.: Meu nome é Ana")
+                                    .desired_width(ui.available_width() - 90.0),
+                            );
+                            if theme::pill_button(ui, "Salvar").clicked()
+                                && !self.new_memory.trim().is_empty()
+                            {
                                 let mem = self.rt.memory.clone();
                                 let text = std::mem::take(&mut self.new_memory);
                                 let _ =
@@ -723,11 +983,15 @@ impl eframe::App for App {
                         let mut delete = None;
                         egui::ScrollArea::vertical().show(ui, |ui| {
                             for m in &self.memories {
-                                ui.horizontal(|ui| {
-                                    if ui.small_button("🗑").on_hover_text("apagar").clicked() {
-                                        delete = Some(m.id);
-                                    }
-                                    ui.label(format!("#{} [{}] {}", m.id, m.kind, m.content));
+                                theme::card(ui, |ui| {
+                                    ui.set_width(ui.available_width());
+                                    ui.horizontal(|ui| {
+                                        if ui.small_button("🗑").on_hover_text("esquecer").clicked()
+                                        {
+                                            delete = Some(m.id);
+                                        }
+                                        ui.add(egui::Label::new(&m.content).wrap());
+                                    });
                                 });
                             }
                         });
@@ -738,90 +1002,435 @@ impl eframe::App for App {
                     }
                 }
             });
+    }
 
+    fn input_panel(&mut self, ctx: &egui::Context) {
+        let p = theme::current(ctx);
         egui::TopBottomPanel::bottom("input")
-            .min_height(90.0)
+            .frame(egui::Frame::new().fill(p.bg).inner_margin(Margin {
+                left: 24,
+                right: 24,
+                top: 6,
+                bottom: 14,
+            }))
+            .show_separator_line(false)
             .show(ctx, |ui| {
-                ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    let edit = egui::TextEdit::multiline(&mut self.input)
-                        .hint_text("Peça algo ao Claudio… (Ctrl+Enter envia)")
-                        .desired_rows(3)
-                        .desired_width(ui.available_width() - 110.0);
-                    let r = ui.add(edit);
-                    let send_key = r.has_focus()
-                        && ui.input(|i| i.key_pressed(egui::Key::Enter) && i.modifiers.ctrl);
-                    ui.vertical(|ui| {
-                        if self.running.is_some() {
-                            if ui
-                                .add_sized([100.0, 30.0], egui::Button::new("⏹ Cancelar"))
-                                .clicked()
-                            {
-                                if let Some(c) = &self.running {
-                                    c.cancel();
-                                }
-                            }
-                        } else if ui
-                            .add_sized([100.0, 30.0], egui::Button::new("Enviar ▶"))
-                            .clicked()
-                            || send_key
-                        {
-                            self.send(ctx);
+                // Live progress while working.
+                if self.running.is_some() {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label(RichText::new(&self.status).color(p.muted));
+                        let (done, total) = self.plan.progress();
+                        if total > 0 {
+                            ui.add(
+                                egui::ProgressBar::new(done as f32 / total as f32)
+                                    .desired_width(160.0)
+                                    .desired_height(8.0)
+                                    .corner_radius(4)
+                                    .fill(p.accent),
+                            );
+                            ui.label(
+                                RichText::new(format!(
+                                    "passo {} de {total}",
+                                    (done + 1).min(total)
+                                ))
+                                .small()
+                                .color(p.muted),
+                            );
                         }
                     });
+                    ui.add_space(4.0);
+                }
+                egui::Frame::new()
+                    .fill(p.surface)
+                    .stroke(Stroke::new(1.0_f32, p.border))
+                    .corner_radius(24)
+                    .inner_margin(Margin {
+                        left: 18,
+                        right: 8,
+                        top: 8,
+                        bottom: 8,
+                    })
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            let enter = ui.input(|i| {
+                                i.key_pressed(egui::Key::Enter) && !i.modifiers.shift
+                            });
+                            let edit = egui::TextEdit::multiline(&mut self.input)
+                                .id_salt("chat_input")
+                                .hint_text("Peça algo ao Claudio…")
+                                .frame(false)
+                                .desired_rows(1)
+                                .desired_width(ui.available_width() - 56.0)
+                                .return_key(Some(egui::KeyboardShortcut::new(
+                                    egui::Modifiers::SHIFT,
+                                    egui::Key::Enter,
+                                )));
+                            let r = ui.add(edit);
+                            let send_key = r.has_focus() && enter;
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    if self.running.is_some() {
+                                        let b = egui::Button::new(
+                                            RichText::new("⏹").size(18.0).color(p.on_accent),
+                                        )
+                                        .fill(p.danger)
+                                        .corner_radius(CornerRadius::same(20))
+                                        .min_size(Vec2::splat(40.0));
+                                        if ui.add(b).on_hover_text("Parar").clicked() {
+                                            if let Some(c) = &self.running {
+                                                c.cancel();
+                                            }
+                                        }
+                                    } else {
+                                        let has_text = !self.input.trim().is_empty();
+                                        let b = egui::Button::new(
+                                            RichText::new("⬆").size(18.0).color(p.on_accent),
+                                        )
+                                        .fill(if has_text { p.accent } else { p.border })
+                                        .corner_radius(CornerRadius::same(20))
+                                        .min_size(Vec2::splat(40.0));
+                                        if ui.add(b).on_hover_text("Enviar (Enter)").clicked()
+                                            || send_key
+                                        {
+                                            self.send(ctx);
+                                            r.request_focus();
+                                        }
+                                    }
+                                },
+                            );
+                        });
+                    });
+                ui.add_space(2.0);
+                ui.vertical_centered(|ui| {
+                    ui.label(
+                        RichText::new(
+                            "Enter envia · Shift+Enter pula linha · O Claudio pede permissão antes de mudar algo",
+                        )
+                        .small()
+                        .color(p.muted),
+                    );
                 });
             });
+    }
 
-        egui::CentralPanel::default().show(ctx, |ui| {
-            egui::ScrollArea::vertical().stick_to_bottom(true).auto_shrink([false, false]).show(ui, |ui| {
-                if self.items.is_empty() {
-                    ui.add_space(40.0);
-                    ui.vertical_centered(|ui| {
-                        ui.heading("Olá! Como posso ajudar?");
-                        ui.label(RichText::new("Arquivos, terminal, web, documentos, mídia e automações — com sua aprovação.").weak());
-                    });
-                }
-                for item in &self.items {
-                    match item {
-                        ChatItem::User(t) => {
-                            ui.add_space(6.0);
-                            egui::Frame::new().fill(Color32::from_rgb(38, 52, 74)).corner_radius(6.0).inner_margin(8.0).show(ui, |ui| {
-                                ui.label(RichText::new("Você").strong());
-                                ui.label(t);
-                            });
-                        }
-                        ChatItem::Assistant(t) => {
-                            ui.add_space(6.0);
-                            egui::Frame::new().fill(Color32::from_rgb(36, 36, 40)).corner_radius(6.0).inner_margin(8.0).show(ui, |ui| {
-                                ui.label(RichText::new("Claudio").strong().color(Color32::LIGHT_GREEN));
-                                ui.label(t);
-                            });
-                        }
-                        ChatItem::Tool { name, summary, ok, preview } => {
-                            let (icon, color) = match ok {
-                                None => ("…", Color32::GRAY),
-                                Some(true) => ("✔", Color32::LIGHT_GREEN),
-                                Some(false) => ("✖", Color32::LIGHT_RED),
-                            };
-                            egui::CollapsingHeader::new(RichText::new(format!("{icon} {name}: {}", summary.chars().take(100).collect::<String>())).color(color).small())
-                                .id_salt(format!("{name}{summary}{}", preview.len()))
-                                .show(ui, |ui| {
-                                    ui.label(RichText::new(preview).monospace().small());
+    fn chat(&mut self, ctx: &egui::Context) {
+        let p = theme::current(ctx);
+        let mut resume = None;
+        let mut open_setup = false;
+        let mut suggestion = None;
+        let needs_setup = self.needs_setup();
+        egui::CentralPanel::default()
+            .frame(
+                egui::Frame::new()
+                    .fill(p.bg)
+                    .inner_margin(Margin::symmetric(24, 8)),
+            )
+            .show(ctx, |ui| {
+                egui::ScrollArea::vertical()
+                    .stick_to_bottom(true)
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        let max_w = ui.available_width().min(820.0);
+                        let side = ((ui.available_width() - max_w) / 2.0).max(0.0);
+                        ui.horizontal(|ui| {
+                            ui.add_space(side);
+                            ui.vertical(|ui| {
+                                ui.set_width(max_w);
+                                let fresh = !self.items.iter().any(|i| {
+                                    matches!(i, ChatItem::User(_) | ChatItem::SetupNeeded)
                                 });
-                        }
-                        ChatItem::Note(t, c) => {
-                            ui.label(RichText::new(t).color(*c).small());
-                        }
-                    }
+                                if fresh {
+                                    empty_state(
+                                        ui,
+                                        max_w,
+                                        &self.logo,
+                                        needs_setup,
+                                        &mut open_setup,
+                                        &mut suggestion,
+                                    );
+                                }
+                                for item in &self.items {
+                                    chat_item(
+                                        ui,
+                                        item,
+                                        max_w,
+                                        &self.logo,
+                                        &mut resume,
+                                        &mut open_setup,
+                                    );
+                                }
+                                ui.add_space(12.0);
+                            });
+                        });
+                    });
+            });
+        if let Some(s) = suggestion {
+            self.input = s;
+        }
+        if let Some(id) = resume {
+            self.resume(ctx, id);
+        }
+        if open_setup {
+            self.onboarding.start();
+        }
+    }
+}
+
+fn chat_item(
+    ui: &mut egui::Ui,
+    item: &ChatItem,
+    max_w: f32,
+    logo: &Option<egui::TextureHandle>,
+    resume: &mut Option<String>,
+    open_setup: &mut bool,
+) {
+    let p = theme::current(ui.ctx());
+    match item {
+        ChatItem::User(t) => {
+            ui.add_space(8.0);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                egui::Frame::new()
+                    .fill(p.user_bubble)
+                    .corner_radius(CornerRadius {
+                        nw: 18,
+                        ne: 18,
+                        sw: 18,
+                        se: 6,
+                    })
+                    .inner_margin(Margin::symmetric(16, 10))
+                    .show(ui, |ui| {
+                        ui.set_max_width(max_w * 0.75);
+                        ui.add(egui::Label::new(RichText::new(t).color(Color32::WHITE)).wrap());
+                    });
+            });
+        }
+        ChatItem::Assistant(t) => {
+            ui.add_space(8.0);
+            ui.horizontal_top(|ui| {
+                avatar(ui, logo);
+                egui::Frame::new()
+                    .fill(p.surface)
+                    .stroke(Stroke::new(1.0_f32, p.border))
+                    .corner_radius(CornerRadius {
+                        nw: 6,
+                        ne: 18,
+                        sw: 18,
+                        se: 18,
+                    })
+                    .inner_margin(Margin::symmetric(16, 12))
+                    .show(ui, |ui| {
+                        ui.set_max_width(max_w - 60.0);
+                        ui.add(egui::Label::new(t.as_str()).wrap().selectable(true));
+                    });
+            });
+        }
+        ChatItem::Tool {
+            name,
+            summary,
+            ok,
+            preview,
+        } => {
+            let (icon, what) = friendly::tool(name);
+            let (mark, color) = match ok {
+                None => ("…", p.muted),
+                Some(true) => ("✔", p.success),
+                Some(false) => ("✖", p.warning),
+            };
+            ui.add_space(2.0);
+            ui.horizontal(|ui| {
+                ui.add_space(48.0);
+                egui::Frame::new()
+                    .fill(p.accent_soft)
+                    .corner_radius(14)
+                    .inner_margin(Margin::symmetric(10, 2))
+                    .show(ui, |ui| {
+                        egui::CollapsingHeader::new(
+                            RichText::new(format!("{icon}  {what}  {mark}"))
+                                .color(color)
+                                .small(),
+                        )
+                        .id_salt(format!("{name}{summary}{}", preview.len()))
+                        .show(ui, |ui| {
+                            ui.set_max_width(max_w - 120.0);
+                            ui.add(
+                                egui::Label::new(RichText::new(summary).small().color(p.muted))
+                                    .wrap(),
+                            );
+                            if !preview.is_empty() {
+                                ui.add(
+                                    egui::Label::new(RichText::new(preview).monospace().small())
+                                        .wrap(),
+                                );
+                            }
+                        });
+                    });
+            });
+        }
+        ChatItem::Note(t, tone) => {
+            let c = match tone {
+                Tone::Muted => p.muted,
+                Tone::Success => p.success,
+                Tone::Warning => p.warning,
+                Tone::Error => p.danger,
+            };
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.add_space(48.0);
+                ui.add(egui::Label::new(RichText::new(t).color(c)).wrap());
+            });
+        }
+        ChatItem::Continue(id) => {
+            ui.horizontal(|ui| {
+                ui.add_space(48.0);
+                if theme::primary_button(ui, "  ▶  Continuar de onde parou  ").clicked() {
+                    *resume = Some(id.clone());
                 }
             });
+        }
+        ChatItem::SetupNeeded => {
+            ui.add_space(8.0);
+            setup_card(ui, max_w, open_setup);
+        }
+    }
+}
+
+fn setup_card(ui: &mut egui::Ui, width: f32, open_setup: &mut bool) {
+    let p = theme::current(ui.ctx());
+    theme::card(ui, |ui| {
+        ui.set_width(width - 34.0);
+        ui.label(
+            RichText::new("Falta só um passo: escolher a IA")
+                .size(17.0)
+                .strong(),
+        );
+        ui.label(
+            RichText::new(
+                "Escolha se a IA roda no seu computador (grátis) ou na nuvem. Eu cuido da instalação.",
+            )
+            .color(p.muted),
+        );
+        if theme::primary_button(ui, "  Configurar IA  ").clicked() {
+            *open_setup = true;
+        }
+    });
+}
+
+fn empty_state(
+    ui: &mut egui::Ui,
+    width: f32,
+    logo: &Option<egui::TextureHandle>,
+    needs_setup: bool,
+    open_setup: &mut bool,
+    suggestion: &mut Option<String>,
+) {
+    let p = theme::current(ui.ctx());
+    ui.add_space((ui.available_height() * 0.10).max(20.0));
+    ui.vertical_centered(|ui| {
+        if let Some(t) = logo {
+            ui.add(
+                egui::Image::new(t)
+                    .fit_to_exact_size(Vec2::splat(64.0))
+                    .corner_radius(18),
+            );
+        }
+        ui.label(RichText::new(greeting()).size(30.0).strong());
+        ui.label(
+            RichText::new("O que você quer que eu faça hoje?")
+                .size(17.0)
+                .color(p.muted),
+        );
+    });
+    ui.add_space(18.0);
+    if needs_setup {
+        setup_card(ui, width, open_setup);
+        ui.add_space(12.0);
+    }
+    let cols = if width > 600.0 { 2 } else { 1 };
+    let spacing = ui.spacing().item_spacing.x;
+    let cw = (width - spacing * (cols as f32 - 1.0)) / cols as f32;
+    for row in friendly::SUGGESTIONS.chunks(cols) {
+        ui.horizontal(|ui| {
+            for (icon, text) in row {
+                let r = egui::Frame::new()
+                    .fill(p.surface)
+                    .stroke(Stroke::new(1.0_f32, p.border))
+                    .corner_radius(16)
+                    .inner_margin(Margin::symmetric(14, 12))
+                    .show(ui, |ui| {
+                        ui.set_width(cw - 30.0);
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new(*icon).size(18.0));
+                            ui.add(egui::Label::new(*text).wrap());
+                        });
+                    })
+                    .response;
+                let r = ui.interact(r.rect, r.id.with("sugg"), egui::Sense::click());
+                if r.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                }
+                if r.clicked() {
+                    *suggestion = Some(text.to_string());
+                }
+            }
         });
+    }
+}
+
+fn avatar(ui: &mut egui::Ui, logo: &Option<egui::TextureHandle>) {
+    match logo {
+        Some(t) => {
+            ui.add(
+                egui::Image::new(t)
+                    .fit_to_exact_size(Vec2::splat(36.0))
+                    .corner_radius(18),
+            );
+        }
+        None => {
+            ui.label(RichText::new("✨").size(24.0));
+        }
+    }
+    ui.add_space(4.0);
+}
+
+fn status_dot(ui: &mut egui::Ui, color: Color32) {
+    let (rect, _) = ui.allocate_exact_size(Vec2::splat(10.0), egui::Sense::hover());
+    ui.painter().circle_filled(rect.center(), 4.5, color);
+}
+
+fn greeting() -> &'static str {
+    use chrono::Timelike;
+    match chrono::Local::now().hour() {
+        5..=11 => "Bom dia!",
+        12..=17 => "Boa tarde!",
+        _ => "Boa noite!",
+    }
+}
+
+impl eframe::App for App {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        while let Ok(m) = self.rx.try_recv() {
+            self.handle(m);
+        }
+        self.sidebar(ctx);
+        self.top_bar(ctx);
+        self.details_panel(ctx);
+        self.input_panel(ctx);
+        self.chat(ctx);
 
         self.approval_window(ctx);
-        if let settings::Action::Save = self.settings.show(ctx, &self.tokio, self.running.is_some())
-        {
-            self.apply_settings(ctx);
+        match self.settings.show(ctx, &self.tokio, self.running.is_some()) {
+            settings::Action::Save => self.apply_settings(ctx),
+            settings::Action::Setup => {
+                self.settings.open = false;
+                self.onboarding.start();
+            }
+            settings::Action::None => {}
         }
+        let cfg = self.rt.cfg.clone();
+        let outcome = self.onboarding.show(ctx, &cfg, &self.tokio);
+        self.finish_onboarding(ctx, outcome);
     }
 }
 
@@ -860,8 +1469,8 @@ fn main() -> eframe::Result<()> {
     let opts = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Claudio Code")
-            .with_inner_size([1280.0, 800.0])
-            .with_min_inner_size([800.0, 500.0])
+            .with_inner_size([1200.0, 780.0])
+            .with_min_inner_size([760.0, 520.0])
             .with_app_id("claudio-code")
             .with_icon(window_icon()),
         ..Default::default()

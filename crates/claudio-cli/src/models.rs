@@ -115,7 +115,7 @@ pub async fn models_cmd(cli: &Cli, cmd: Option<&ModelsCmd>) -> Result<i32> {
                 }
                 let dest = downloads::model_path(m);
                 (
-                    m.url(),
+                    downloads::model_url(m),
                     dest.clone(),
                     m.model_config(&dest.to_string_lossy()),
                 )
@@ -310,8 +310,7 @@ pub async fn llama_install(cli: &Cli, variant: &str) -> Result<i32> {
         other => bail!("variante inválida: {other} (use cpu ou vulkan)"),
     };
     let mut cfg = load_config(cli)?;
-    let api = std::env::var("CLAUDIO_LLAMA_RELEASES_API")
-        .unwrap_or_else(|_| downloads::LLAMA_RELEASES_API.into());
+    let api = downloads::llama_releases_api();
     let progress = downloads::new_progress();
     let (p2, c) = (progress.clone(), ctrlc());
     let task = tokio::spawn(async move { downloads::install_llama_cpp(&api, v, &p2, &c).await });

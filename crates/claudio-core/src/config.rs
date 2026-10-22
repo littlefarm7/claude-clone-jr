@@ -21,6 +21,7 @@ pub struct Config {
     pub local: LocalConfig,
     pub memory: MemoryConfig,
     pub voice: VoiceConfig,
+    pub ui: UiConfig,
     pub models: Vec<ModelConfig>,
     pub mcp_servers: Vec<McpServerConfig>,
     pub custom_tools: Vec<CustomToolConfig>,
@@ -221,6 +222,16 @@ fn default_custom_risk() -> String {
     "execute".into()
 }
 
+/// Desktop interface preferences.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct UiConfig {
+    /// "system" (default), "light" or "dark".
+    pub theme: String,
+    /// The first-run assistant was completed or skipped.
+    pub onboarded: bool,
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -236,6 +247,7 @@ impl Default for Config {
                 auto_recall: true,
             },
             voice: VoiceConfig::default(),
+            ui: UiConfig::default(),
             models: default_models(),
             mcp_servers: vec![],
             custom_tools: vec![],
@@ -368,10 +380,17 @@ impl Config {
         if path.exists() && !backup.exists() {
             let _ = std::fs::copy(&path, &backup);
         }
+        // The key-store block is added at load time; don't persist it.
+        let secrets = crate::secrets::secrets_path_for(self);
+        let mut out = self.clone();
+        if let Some(dir) = secrets.parent() {
+            let d = dir.to_string_lossy();
+            out.permissions.blocked_paths.retain(|p| *p != d);
+        }
         let text = format!(
             "# Configuração do Claudio Code (gerada pelo aplicativo).\n# Chaves de API ficam em {} ou em variáveis de ambiente.\n\n{}",
-            crate::secrets::secrets_path_for(self).display(),
-            toml::to_string_pretty(self)?
+            secrets.display(),
+            toml::to_string_pretty(&out)?
         );
         let tmp = path.with_extension("toml.tmp");
         std::fs::write(&tmp, text)?;

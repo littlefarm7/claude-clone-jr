@@ -908,7 +908,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
 name = "claudio-cli"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -932,7 +932,7 @@ dependencies = [
 
 [[package]]
 name = "claudio-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -957,7 +957,7 @@ dependencies = [
 
 [[package]]
 name = "claudio-gui"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -966,6 +966,7 @@ dependencies = [
  "claudio-llm",
  "claudio-tools",
  "eframe",
+ "egui-winit",
  "egui_extras",
  "image",
  "serde_json",
@@ -976,7 +977,7 @@ dependencies = [
 
 [[package]]
 name = "claudio-llm"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -995,7 +996,7 @@ dependencies = [
 
 [[package]]
 name = "claudio-tools"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1006,6 +1007,7 @@ dependencies = [
  "claudio-core",
  "claudio-llm",
  "csv",
+ "dirs",
  "dunce",
  "flate2",
  "globset",

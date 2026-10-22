@@ -11,6 +11,7 @@ pub mod memory_tools;
 pub mod ooxml;
 pub mod pdfgen;
 pub mod runtime;
+pub mod setup;
 pub mod shell;
 pub mod skills;
 pub mod testutil;

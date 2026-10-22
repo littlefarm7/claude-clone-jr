@@ -35,10 +35,10 @@ qual modelo está rodando nem quais ferramentas existem: tudo entra por traits.
 | Crate | Papel | Depende de |
 |---|---|---|
 | `claudio-llm` | Tipos de mensagem neutros, trait `Provider`, provedores (OpenAI‑compatível/llama.cpp, Anthropic, Gemini, Scripted para testes), roteador de modelos, gerenciador do `llama-server`. | reqwest, serde |
-| `claudio-code` | Ciclo do agente, limites, plano, verificação, permissões, taint (injeção de prompt), auditoria, persistência SQLite, memória, configuração, workflows, agendador, trait `Tool`. | claudio-llm, rusqlite |
-| `claudio-tools` | Ferramentas reais: arquivos, terminal, web, navegador, documentos, multimídia, memória, MCP, skills, ferramentas customizadas, voz, subagentes. Também o módulo `runtime`, que monta tudo a partir da configuração (usado pela CLI e pela GUI). | claudio-code |
+| `claudio-core` | Ciclo do agente, limites, plano, verificação, permissões, taint (injeção de prompt), auditoria, persistência SQLite, memória, configuração, workflows, agendador, trait `Tool`. | claudio-llm, rusqlite |
+| `claudio-tools` | Ferramentas reais: arquivos, terminal, web, navegador, documentos, multimídia, memória, MCP, skills, ferramentas customizadas, voz, subagentes. Também o módulo `runtime`, que monta tudo a partir da configuração (usado pela CLI e pela GUI), `downloads` (modelos e llama.cpp) e `setup` (detecção de hardware, recomendação de modelo, instalação automática, conexão com a nuvem e mensagens de erro em linguagem simples). | claudio-core |
 | `claudio-cli` | Binário `claudio`: chat, `run`, `resume`, histórico, memória, modelos, workflows, agendamentos, daemon. | todos |
-| `claudio-gui` | Binário `claudio-gui` (egui/eframe): chat, histórico, seleção de modelo, plano, progresso, logs, aprovações, cancelamento. | todos |
+| `claudio-gui` | Binário `claudio-gui` (egui/eframe): chat, histórico, seleção de modelo, plano, progresso, logs, aprovações, cancelamento. Módulos `onboarding` (assistente de boas-vindas), `theme` (tema arredondado claro/escuro), `friendly` (textos simples) e `settings`. | todos |
 
 ## Ciclo do agente
 

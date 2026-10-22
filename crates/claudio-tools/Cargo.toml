@@ -25,6 +25,7 @@ libc = "0.2"
 tracing.workspace = true
 sysinfo = { version = "0.37", default-features = false, features = ["system", "disk"] }
 dunce = "1"
+dirs.workspace = true
 shell-words = "1"
 ignore = "0.4"
 globset = "0.4"

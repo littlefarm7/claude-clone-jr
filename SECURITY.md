@@ -67,6 +67,12 @@ detecta alteração ou remoção de linhas.
 - Modo local não precisa de conta nem de internet.
 - O primeiro uso de um provedor remoto pede consentimento explícito,
   gravado em `consents`. `privacy.local_only = true` bloqueia todos os remotos.
+- No assistente de boas-vindas, o botão **Conectar** de um serviço na nuvem vem acompanhado do aviso
+  “Ao conectar, você autoriza o envio das suas conversas…”; clicar nele grava esse consentimento só
+  para o serviço escolhido. A chave é testada com uma mensagem curta (“Responda apenas: OK”) e guardada
+  no arquivo de chaves (0600).
+- A instalação automática baixa apenas o release oficial do llama.cpp (GitHub) e o modelo do catálogo
+  (Hugging Face), ou de espelhos definidos pelo próprio usuário em variáveis de ambiente.
 - Memória é controlada pelo usuário: `claudio memory list|delete|clear`.
 
 ## Relatar vulnerabilidades

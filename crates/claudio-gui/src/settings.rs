@@ -15,6 +15,7 @@ use tokio_util::sync::CancellationToken;
 
 #[derive(PartialEq, Clone, Copy)]
 enum Tab {
+    Basic,
     Api,
     Local,
     General,
@@ -28,6 +29,8 @@ struct Job {
 pub enum Action {
     None,
     Save,
+    /// Open the setup assistant.
+    Setup,
 }
 
 pub struct Settings {
@@ -53,13 +56,14 @@ pub struct Settings {
     message: Option<(String, Color32)>,
     pub dirty: bool,
     mem_total_mb: u64,
+    advanced: bool,
 }
 
 impl Settings {
     pub fn new(cfg: &Config) -> Self {
         let mut s = Self {
             open: false,
-            tab: Tab::Api,
+            tab: Tab::Basic,
             draft: cfg.clone(),
             secrets: Secrets::default(),
             secrets_path: secrets_path_for(cfg),
@@ -80,6 +84,7 @@ impl Settings {
             message: None,
             dirty: false,
             mem_total_mb: claudio_llm::router::detect_resources().mem_total_mb,
+            advanced: false,
         };
         s.reset(cfg);
         s
@@ -120,6 +125,10 @@ impl Settings {
         &API_PRESETS[self.preset]
     }
 
+    pub fn saved_message(&mut self) {
+        self.info("✔ Configurações salvas.");
+    }
+
     fn info(&mut self, text: impl Into<String>) {
         self.message = Some((text.into(), Color32::LIGHT_GREEN));
     }
@@ -153,51 +162,189 @@ impl Settings {
         }
         let mut action = Action::None;
         let mut open = self.open;
-        egui::Window::new(RichText::new("⚙ Configurações").strong())
+        let p = crate::theme::current(ctx);
+        let screen = ctx.screen_rect();
+        egui::Window::new(RichText::new("Configurações").size(20.0).strong())
             .open(&mut open)
-            .default_size([780.0, 580.0])
-            .max_width(900.0)
+            .default_size([620.0, 560.0])
+            .max_width((screen.width() - 40.0).min(900.0))
+            .max_height(screen.height() - 40.0)
             .resizable(true)
             .collapsible(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.selectable_value(&mut self.tab, Tab::Api, "Modelos por API");
-                    ui.selectable_value(&mut self.tab, Tab::Local, "Modelos locais");
-                    ui.selectable_value(&mut self.tab, Tab::General, "Geral");
-                });
-                ui.separator();
+                if self.advanced {
+                    ui.horizontal(|ui| {
+                        ui.selectable_value(&mut self.tab, Tab::Basic, "Básico");
+                        ui.selectable_value(&mut self.tab, Tab::Api, "IAs na nuvem (API)");
+                        ui.selectable_value(&mut self.tab, Tab::Local, "IAs no computador");
+                        ui.selectable_value(&mut self.tab, Tab::General, "Avançado");
+                    });
+                    ui.add_space(4.0);
+                } else {
+                    self.tab = Tab::Basic;
+                }
                 egui::ScrollArea::vertical()
-                    .max_height(ui.available_height() - 50.0)
+                    .max_height(ui.available_height() - 60.0)
+                    .auto_shrink([false, true])
                     .show(ui, |ui| match self.tab {
+                        Tab::Basic => {
+                            if self.basic_tab(ui) {
+                                action = Action::Setup;
+                            }
+                        }
                         Tab::Api => self.api_tab(ui, tokio),
                         Tab::Local => self.local_tab(ui, tokio),
                         Tab::General => self.general_tab(ui),
                     });
-                ui.separator();
+                ui.add_space(6.0);
                 ui.horizontal(|ui| {
-                    let label = if self.dirty {
-                        "💾 Salvar alterações"
-                    } else {
-                        "💾 Salvar"
-                    };
-                    let save = ui.add_enabled(!busy && self.dirty, egui::Button::new(label));
+                    ui.add_enabled_ui(!busy && self.dirty, |ui| {
+                        if crate::theme::primary_button(ui, "  Salvar  ").clicked() {
+                            action = Action::Save;
+                        }
+                    });
                     if busy {
                         ui.label(
-                            RichText::new("aguarde a tarefa atual terminar para salvar")
+                            RichText::new("Espere a tarefa atual terminar para salvar.")
                                 .small()
-                                .weak(),
+                                .color(p.muted),
                         );
-                    }
-                    if save.clicked() {
-                        action = Action::Save;
+                    } else if !self.dirty {
+                        ui.label(RichText::new("Nenhuma alteração.").small().color(p.muted));
                     }
                 });
                 if let Some((m, c)) = &self.message {
-                    ui.add(egui::Label::new(RichText::new(m).color(*c)).wrap());
+                    let c = if *c == Color32::LIGHT_GREEN {
+                        p.success
+                    } else {
+                        p.danger
+                    };
+                    ui.add(egui::Label::new(RichText::new(m).color(c)).wrap());
                 }
             });
         self.open = open;
         action
+    }
+
+    // -------------------------------------------------------------- Basic ---
+
+    /// Simple options for everyone. Returns true to open the setup assistant.
+    fn basic_tab(&mut self, ui: &mut egui::Ui) -> bool {
+        use crate::theme::{card, pill_button};
+        let p = crate::theme::current(ui.ctx());
+        let mut setup = false;
+        let mut changed = false;
+
+        ui.label(RichText::new("Sua IA").strong());
+        card(ui, |ui| {
+            ui.set_width(ui.available_width());
+            let name = self.draft.default_model.clone().unwrap_or_default();
+            let ready = claudio_tools::setup::ai_ready(&self.draft);
+            ui.horizontal(|ui| {
+                crate::status_dot(ui, if ready { p.success } else { p.warning });
+                ui.label(
+                    RichText::new(claudio_tools::setup::ai_label(&self.draft, &name)).strong(),
+                );
+            });
+            ui.label(
+                RichText::new(if ready {
+                    "Pronta para usar."
+                } else {
+                    "Ainda não configurada."
+                })
+                .color(p.muted),
+            );
+            if crate::theme::primary_button(ui, "  Trocar ou configurar IA  ").clicked() {
+                setup = true;
+            }
+        });
+
+        ui.add_space(8.0);
+        ui.label(RichText::new("Pasta onde o Claudio salva os arquivos").strong());
+        ui.horizontal(|ui| {
+            changed |= ui
+                .add(
+                    egui::TextEdit::singleline(&mut self.workspace)
+                        .desired_width(ui.available_width() - 120.0),
+                )
+                .changed();
+            if pill_button(ui, "📂 Abrir").clicked() {
+                let path = claudio_core::config::expand(self.workspace.trim());
+                let _ = std::fs::create_dir_all(&path);
+                ui.ctx().open_url(egui::OpenUrl::new_tab(format!(
+                    "file://{}",
+                    path.to_string_lossy().replace('\\', "/")
+                )));
+            }
+        });
+
+        ui.add_space(8.0);
+        ui.label(RichText::new("Quando pedir sua permissão").strong());
+        let d = &mut self.draft;
+        changed |= ui
+            .radio_value(
+                &mut d.permissions.mode,
+                Mode::Ask,
+                "Antes de criar, mudar ou apagar algo (recomendado)",
+            )
+            .changed();
+        changed |= ui
+            .radio_value(
+                &mut d.permissions.mode,
+                Mode::AutoSafe,
+                "Só para ações arriscadas (pode criar e editar na pasta acima sem perguntar)",
+            )
+            .changed();
+        changed |= ui
+            .radio_value(
+                &mut d.permissions.mode,
+                Mode::Strict,
+                "Para tudo, até para ler",
+            )
+            .changed();
+
+        ui.add_space(8.0);
+        ui.label(RichText::new("Privacidade").strong());
+        changed |= crate::theme::toggle(
+            ui,
+            &mut d.privacy.local_only,
+            "Nunca usar IA na nuvem (nada sai do computador)",
+        )
+        .changed();
+
+        ui.add_space(8.0);
+        ui.label(RichText::new("Aparência").strong());
+        ui.horizontal(|ui| {
+            for (v, l) in [
+                ("system", "Automática"),
+                ("light", "☀ Clara"),
+                ("dark", "🌙 Escura"),
+            ] {
+                let selected = d.ui.theme == v || (v == "system" && d.ui.theme.is_empty());
+                if ui.selectable_label(selected, l).clicked() && !selected {
+                    d.ui.theme = v.to_string();
+                    changed = true;
+                }
+            }
+        });
+
+        ui.add_space(12.0);
+        crate::theme::toggle(ui, &mut self.advanced, "Mostrar opções avançadas")
+            .on_hover_text("Para quem quer escolher modelos, chaves e limites manualmente.");
+
+        if changed {
+            let ws = self.workspace.trim().to_string();
+            if !ws.is_empty() {
+                if self.draft.permissions.workspace_roots.is_empty() {
+                    self.draft.permissions.workspace_roots.push(ws);
+                } else {
+                    self.draft.permissions.workspace_roots[0] = ws;
+                }
+            }
+            self.dirty = true;
+        }
+        setup
     }
 
     // ---------------------------------------------------------------- API ---
@@ -590,7 +737,8 @@ impl Settings {
                 let v = self.variant;
                 self.start_job("llama", tokio, move |p, c| {
                     Box::pin(async move {
-                        downloads::install_llama_cpp(downloads::LLAMA_RELEASES_API, v, &p, &c).await
+                        downloads::install_llama_cpp(&downloads::llama_releases_api(), v, &p, &c)
+                            .await
                     })
                 });
             }
@@ -710,7 +858,7 @@ impl Settings {
             self.info(format!("{} selecionado; clique em Salvar", m.name));
         }
         if let Some(m) = start {
-            let (url, dest) = (m.url(), downloads::model_path(m));
+            let (url, dest) = (downloads::model_url(m), downloads::model_path(m));
             self.start_job(m.id, tokio, move |p, c| {
                 Box::pin(async move { downloads::download(&url, &dest, &p, &c).await })
             });

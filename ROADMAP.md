@@ -24,7 +24,7 @@ Ambiente de desenvolvimento: Ubuntu 24.04 x86_64 em container, 4 threads, 16 GB,
 | 8 | GUI egui | executada sob Xvfb: tarefa real, diálogo de aprovação, verificação PASS | ✅ |
 | 8 | AppImage | gerado com appimagetool; CLI e GUI executados a partir do AppImage | ✅ |
 
-Total: 73 testes automatizados passando (`cargo test --workspace`), `clippy -D warnings` e `rustfmt` limpos.
+Total na v0.1: 73 testes automatizados passando (`cargo test --workspace`), `clippy -D warnings` e `rustfmt` limpos.
 
 ## v0.2 — multiplataforma
 
@@ -44,6 +44,16 @@ Total: 73 testes automatizados passando (`cargo test --workspace`), `clippy -D w
 | Baixar modelos locais | downloader testado contra servidor local (retomada, SHA‑256, cancelamento); download real do Hugging Face bloqueado pela rede do ambiente de testes | 🟡 |
 | Instalar llama.cpp com um clique | seleção de pacote e extração testadas com release simulado; API do GitHub bloqueada pela rede do ambiente de testes | 🟡 |
 | Usar `.gguf`/`llama-server` existentes pela GUI | GUI sob Xvfb: llama-server iniciado automaticamente | ✅ |
+
+## v0.4 — fácil para o usuário final
+
+| Item | Verificação | Status |
+|---|---|---|
+| Assistente “No meu computador” (detecção, escolha, instalação e download automáticos) | teste automatizado com servidor simulado; GUI sob Xvfb com `llama-server` real e GGUF de teste servidos por espelho local | ✅ |
+| Assistente “Na nuvem” | GUI sob Xvfb: chave inválida enviada à API real da Anthropic, resposta 401 exibida em linguagem simples | 🟡 sem chave válida no ambiente |
+| Detecção de GPU (Linux `/sys/class/drm`, Windows `Win32_VideoController`, macOS Apple Silicon) | regras de recomendação com testes unitários; detecção real testada só no Linux sem GPU | 🟡 |
+| Fallback GPU → CPU ao iniciar o modelo | revisão de código | 🟡 sem GPU no ambiente |
+| Visual novo (tema claro/escuro), textos simples, permissões amigáveis | GUI sob Xvfb nos dois temas | ✅ |
 
 ## Próximos passos
 

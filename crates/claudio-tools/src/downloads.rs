@@ -339,6 +339,23 @@ pub fn find_llama_server(dir: &Path) -> Option<PathBuf> {
 pub const LLAMA_RELEASES_API: &str =
     "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest";
 
+/// Release API to use: `CLAUDIO_LLAMA_RELEASES_API` overrides the GitHub default
+/// (mirrors for restricted networks, tests).
+pub fn llama_releases_api() -> String {
+    std::env::var("CLAUDIO_LLAMA_RELEASES_API").unwrap_or_else(|_| LLAMA_RELEASES_API.into())
+}
+
+/// Download URL of a catalog model. `CLAUDIO_MODELS_MIRROR` (a base URL that
+/// serves the `.gguf` files by name) replaces Hugging Face.
+pub fn model_url(m: &LocalModel) -> String {
+    match std::env::var("CLAUDIO_MODELS_MIRROR") {
+        Ok(base) if !base.trim().is_empty() => {
+            format!("{}/{}", base.trim().trim_end_matches('/'), m.file)
+        }
+        _ => m.url(),
+    }
+}
+
 /// Download the latest official llama.cpp build for this machine.
 /// Returns the path to `llama-server`.
 pub async fn install_llama_cpp(

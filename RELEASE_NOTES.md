@@ -1,30 +1,34 @@
-## Claudio Code v0.3.0
+## Claudio Code v0.4.0 — fácil para qualquer pessoa
 
 Agente de IA autônomo, local-first e open source (Apache-2.0), para Linux, Windows e macOS.
 
 ### Novidades
 
-- **Novo nome: Claudio Code** (antes “Jarvis Core”). Os comandos agora são `claudio` e `claudio-gui`.
-  As pastas de configuração e dados antigas são migradas automaticamente.
-- **Tela de Configurações** (botão ⚙ na barra superior):
-  - **Modelos por API:** Anthropic, OpenAI, Gemini, OpenRouter, Groq, Ollama, LM Studio ou qualquer
-    serviço compatível com OpenAI. Campo de chave oculto, botão **Testar conexão**, escolha do modelo padrão.
-  - **Modelos locais:** instalação do llama.cpp oficial com um clique (CPU ou GPU Vulkan), catálogo de
-    modelos GGUF recomendados com download que pode ser retomado e verificado (SHA‑256), aviso de memória,
-    download por URL ou uso de um `.gguf` já existente, ajuste de camadas na GPU e contexto.
-  - **Geral:** modo de permissões, pasta de trabalho, “usar só modelos locais”, verificação e idioma.
-- Chaves de API guardadas em arquivo separado com permissão 0600, fora do `config.toml` e bloqueado para
-  as ferramentas do agente.
-- Novos comandos: `claudio models providers | add-api | test | catalog | download | use-file | use | remove`
-  e `claudio llama-install`.
+- **Assistente de boas-vindas.** Na primeira vez, o Claudio pergunta só uma coisa: a IA vai funcionar
+  **no meu computador** (grátis e privado) ou **na nuvem**?
+  - **No meu computador:** detecta memória, placa de vídeo e espaço livre, escolhe o modelo certo,
+    instala o motor de IA e baixa o modelo com uma única barra de progresso. Sem termos técnicos.
+    Se a placa de vídeo falhar, volta sozinho para o processador.
+  - **Na nuvem:** botões para Claude, ChatGPT, Gemini e OpenRouter, passo a passo para criar a chave,
+    botão “Abrir o site”, teste automático da chave e mensagens de erro em português simples.
+- **Visual novo, arredondado e moderno:** balões de conversa, barra lateral com “Nova conversa”,
+  campo de mensagem arredondado, cartões de sugestão, **tema claro e escuro** (ou automático).
+- **Linguagem simples em tudo:** cada ação aparece como “Lendo um arquivo”, “Criando um arquivo”,
+  “Pesquisando na internet”; os pedidos de permissão explicam o que vai acontecer; detalhes técnicos
+  ficam escondidos (“Detalhes técnicos” e “Registro técnico”).
+- **Configurações simplificadas:** IA, pasta, quando pedir permissão, privacidade e aparência.
+  Opções manuais em “Mostrar opções avançadas”.
+- **Enter envia** a mensagem; tarefas longas têm o botão **Continuar de onde parou**.
+- Pasta de trabalho padrão em **Documentos/Claudio**.
+- Espelhos de download para redes restritas: `CLAUDIO_LLAMA_RELEASES_API` e `CLAUDIO_MODELS_MIRROR`.
 
 ### Downloads
 
 | Sistema | Arquivo |
 |---|---|
-| Linux x86_64 (glibc ≥ 2.31) | `Claudio_Code-0.3.0-x86_64.AppImage` ou `…-linux-x86_64.tar.gz` |
-| Windows 10/11 x64 | `Claudio_Code-0.3.0-windows-x86_64.zip` |
-| macOS 11+ (Apple Silicon e Intel) | `Claudio_Code-0.3.0-macos-universal.dmg` ou `…-macos-universal.tar.gz` |
+| Linux x86_64 (glibc ≥ 2.31) | `Claudio_Code-0.4.0-x86_64.AppImage` ou `…-linux-x86_64.tar.gz` |
+| Windows 10/11 x64 | `Claudio_Code-0.4.0-windows-x86_64.zip` |
+| macOS 11+ (Apple Silicon e Intel) | `Claudio_Code-0.4.0-macos-universal.dmg` ou `…-macos-universal.tar.gz` |
 
 Confira os arquivos com `SHA256SUMS.txt`.
 

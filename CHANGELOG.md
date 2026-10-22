@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0
+- Assistente de boas-vindas: configuração automática da IA no computador (detecção de memória, GPU e disco,
+  escolha do modelo, instalação e download com uma barra) ou na nuvem (Claude, ChatGPT, Gemini, OpenRouter)
+  com teste da chave e erros em linguagem simples.
+- Interface redesenhada: cantos arredondados, balões, barra lateral, tema claro/escuro/automático.
+- Ações, permissões e erros descritos em português simples; detalhes técnicos escondidos por padrão.
+- Configurações com aba Básico e opções avançadas ocultas.
+- Fallback automático para CPU quando o modelo não inicia na GPU.
+- Pasta de trabalho padrão em Documentos/Claudio; espelhos `CLAUDIO_LLAMA_RELEASES_API` e `CLAUDIO_MODELS_MIRROR`.
+- A seção `[ui]` (tema, assistente concluído) foi adicionada ao `config.toml`.
+
 ## 0.3.0
 - Projeto renomeado para Claudio Code (binários `claudio` e `claudio-gui`), com migração das pastas antigas.
 - Tela de Configurações: modelos por API (com teste de conexão e chave protegida), download de modelos locais e instalação do llama.cpp, opções gerais.

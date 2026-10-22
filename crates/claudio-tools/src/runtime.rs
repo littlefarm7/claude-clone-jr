@@ -202,7 +202,7 @@ impl Runtime {
             .next()
             .and_then(|p| p.trim_end_matches("/v1").trim_end_matches('/').parse().ok())
             .unwrap_or(self.cfg.local.port);
-        let server = LlamaServer::start(&LlamaServerOptions {
+        let mut opts = LlamaServerOptions {
             binary: self
                 .cfg
                 .local
@@ -217,8 +217,17 @@ impl Runtime {
             gpu_layers: self.cfg.local.gpu_layers,
             threads: self.cfg.local.threads,
             extra_args: vec![],
-        })
-        .await?;
+        };
+        let server = match LlamaServer::start(&opts).await {
+            Ok(s) => s,
+            // The video card may lack memory or drivers: retry on the CPU.
+            Err(e) if opts.gpu_layers > 0 => {
+                tracing::warn!("falha com GPU ({e:#}); tentando só com o processador");
+                opts.gpu_layers = 0;
+                LlamaServer::start(&opts).await?
+            }
+            Err(e) => return Err(e),
+        };
         *guard = Some(server);
         Ok(())
     }

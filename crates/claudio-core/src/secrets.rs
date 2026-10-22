@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::{config_dir, set_private, Config};
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Secrets {
     /// Model name (from `[[models]]`) → API key.
     #[serde(default)]
