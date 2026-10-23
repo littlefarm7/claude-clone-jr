@@ -59,6 +59,43 @@ pub async fn download(
     progress: &ProgressHandle,
     cancel: &CancellationToken,
 ) -> Result<PathBuf> {
+    // Network hiccups are common on multi-GB files: retry a few times,
+    // resuming from the partial file, before bothering the user.
+    let mut attempt = 0;
+    loop {
+        match download_once(url, dest, progress, cancel).await {
+            Ok(p) => return Ok(p),
+            Err(e) if attempt < 5 && !cancel.is_cancelled() && is_transient(&e) => {
+                attempt += 1;
+                tracing::warn!("download falhou ({e:#}); nova tentativa {attempt}/5");
+                set_stage(progress, "Conexão instável, tentando de novo…");
+                tokio::select! {
+                    _ = cancel.cancelled() => bail!("download cancelado"),
+                    _ = tokio::time::sleep(Duration::from_secs(2 * attempt)) => {}
+                }
+            }
+            Err(e) => return Err(e),
+        }
+    }
+}
+
+/// Errors worth retrying: dropped connections, timeouts and 5xx answers.
+fn is_transient(e: &anyhow::Error) -> bool {
+    let t = format!("{e:#}").to_lowercase();
+    t.contains("conexão interrompida")
+        || t.contains("falha ao conectar")
+        || t.contains("download incompleto")
+        || t.contains("timed out")
+        || t.contains("http 5")
+        || t.contains("recomeçando o download")
+}
+
+async fn download_once(
+    url: &str,
+    dest: &Path,
+    progress: &ProgressHandle,
+    cancel: &CancellationToken,
+) -> Result<PathBuf> {
     if !(url.starts_with("https://")
         || url.starts_with("http://127.0.0.1")
         || url.starts_with("http://localhost"))
@@ -82,6 +119,12 @@ pub async fn download(
         r = req.send() => r.with_context(|| format!("falha ao conectar em {url}"))?,
     };
     let status = resp.status();
+    if status.as_u16() == 416 && have > 0 {
+        // The partial file is already as long as the remote one (or longer):
+        // start over instead of failing forever.
+        let _ = std::fs::remove_file(&part);
+        bail!("arquivo parcial inválido; recomeçando o download");
+    }
     if !(status.is_success()) {
         bail!("o servidor respondeu HTTP {status} para {url}");
     }
@@ -336,8 +379,11 @@ pub fn find_llama_server(dir: &Path) -> Option<PathBuf> {
     found
 }
 
+/// The binary builds (`b1234`) are published as pre-releases, so
+/// `/releases/latest` points to a source-only version: list recent releases
+/// and take the newest one that has a build for this machine.
 pub const LLAMA_RELEASES_API: &str =
-    "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest";
+    "https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=30";
 
 /// Release API to use: `CLAUDIO_LLAMA_RELEASES_API` overrides the GitHub default
 /// (mirrors for restricted networks, tests).
@@ -374,28 +420,44 @@ pub async fn install_llama_cpp(
         .error_for_status()?
         .json()
         .await?;
-    let tag = v["tag_name"].as_str().unwrap_or("latest").to_string();
-    let assets = v["assets"].as_array().cloned().unwrap_or_default();
-    let names: Vec<String> = assets
-        .iter()
-        .filter_map(|a| a["name"].as_str().map(String::from))
-        .collect();
+    // A list of releases (GitHub default) or a single one (mirrors, older setups).
+    let releases = match v {
+        serde_json::Value::Array(a) => a,
+        other => vec![other],
+    };
     let os = std::env::consts::OS;
-    let Some(name) = pick_llama_asset(&names, os, std::env::consts::ARCH, variant) else {
+    let mut found = None;
+    for r in releases
+        .iter()
+        .filter(|r| !r["draft"].as_bool().unwrap_or(false))
+    {
+        let assets = r["assets"].as_array().cloned().unwrap_or_default();
+        let names: Vec<String> = assets
+            .iter()
+            .filter_map(|a| a["name"].as_str().map(String::from))
+            .collect();
+        if let Some(name) = pick_llama_asset(&names, os, std::env::consts::ARCH, variant) {
+            let url = assets
+                .iter()
+                .find(|a| a["name"].as_str() == Some(name.as_str()))
+                .and_then(|a| a["browser_download_url"].as_str())
+                .map(String::from);
+            if let Some(url) = url {
+                let tag = r["tag_name"].as_str().unwrap_or("latest").to_string();
+                found = Some((tag, name.clone(), url));
+                break;
+            }
+        }
+    }
+    let Some((tag, name, url)) = found else {
         bail!(
-            "o release {tag} não tem build pronta de llama.cpp para {os}/{} ({}). Compile a partir do código (docs/MODELOS-LOCAIS.md).",
+            "nenhum release recente do llama.cpp tem build pronta para {os}/{} ({}). Compile a partir do código (docs/MODELOS-LOCAIS.md).",
             std::env::consts::ARCH,
             variant.label()
         );
     };
-    let url = assets
-        .iter()
-        .find(|a| a["name"].as_str() == Some(name.as_str()))
-        .and_then(|a| a["browser_download_url"].as_str())
-        .context("asset sem URL")?
-        .to_string();
     let root = data_dir().join("llama.cpp");
-    let archive = root.join(name);
+    let archive = root.join(&name);
     download(&url, &archive, progress, cancel).await?;
     set_stage(progress, "Extraindo");
     let dest = root.join(&tag);

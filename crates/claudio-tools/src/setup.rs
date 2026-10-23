@@ -81,7 +81,12 @@ fn detect_gpu() -> Option<Gpu> {
             .map(|b| b / (1024 * 1024));
         let gpu = Gpu {
             vendor,
-            name: format!("{vendor:?}"),
+            name: match vendor {
+                GpuVendor::Amd => "AMD Radeon",
+                GpuVendor::Nvidia => "NVIDIA",
+                _ => "Intel",
+            }
+            .to_string(),
             vram_mb,
         };
         // Prefer a dedicated card over an integrated one.

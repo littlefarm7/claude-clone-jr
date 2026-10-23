@@ -60,13 +60,18 @@ async fn release(State(f): State<Files>) -> impl IntoResponse {
     } else {
         "x64"
     };
-    Json(serde_json::json!({
-        "tag_name": "b9999",
-        "assets": [
+    // Like GitHub today: the newest entry is a source-only version and the
+    // binary builds come after it (published as pre-releases).
+    Json(serde_json::json!([
+        {"tag_name": "b10000", "draft": true, "assets": [
+            {"name": format!("llama-b10000-bin-{os}-{arch}.zip"), "browser_download_url": format!("{base}/nope")}
+        ]},
+        {"tag_name": "v0.7.0", "assets": []},
+        {"tag_name": "b9999", "prerelease": true, "assets": [
             {"name": "llama-b9999-bin-ubuntu-vulkan-x64.zip", "browser_download_url": format!("{base}/nope")},
             {"name": format!("llama-b9999-bin-{os}-{arch}.zip"), "browser_download_url": format!("{base}/llama.zip")}
-        ]
-    }))
+        ]}
+    ]))
 }
 
 async fn llama_zip(State(f): State<Files>) -> impl IntoResponse {

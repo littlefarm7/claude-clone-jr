@@ -53,6 +53,7 @@ Total na v0.1: 73 testes automatizados passando (`cargo test --workspace`), `cli
 | Assistente “Na nuvem” | GUI sob Xvfb: chave inválida enviada à API real da Anthropic, resposta 401 exibida em linguagem simples | 🟡 sem chave válida no ambiente |
 | Detecção de GPU (Linux `/sys/class/drm`, Windows `Win32_VideoController`, macOS Apple Silicon) | regras de recomendação com testes unitários; detecção real testada só no Linux sem GPU | 🟡 |
 | Fallback GPU → CPU ao iniciar o modelo | revisão de código | 🟡 sem GPU no ambiente |
+| Instalação do llama.cpp com releases atuais (b#### como pré-lançamento) | pacotes oficiais b11829 (CPU e Vulkan) baixados do GitHub e servidos por espelho local; GUI sob Xvfb instalou, iniciou e conversou | ✅ |
 | Visual novo (tema claro/escuro), textos simples, permissões amigáveis | GUI sob Xvfb nos dois temas | ✅ |
 
 ## Próximos passos

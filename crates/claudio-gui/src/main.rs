@@ -115,6 +115,8 @@ struct App {
     show_details: bool,
     /// The agent is checking its own result: keep that out of the chat.
     verifying: bool,
+    /// The current task passed the self-check.
+    checked: bool,
     status: String,
     search: String,
     settings: settings::Settings,
@@ -169,6 +171,7 @@ impl App {
             tab: RightTab::Plan,
             show_details: false,
             verifying: false,
+            checked: false,
             status: String::new(),
             search: String::new(),
             logo,
@@ -304,6 +307,7 @@ impl App {
         let cancel = CancellationToken::new();
         self.running = Some(cancel.clone());
         self.status = "Pensando…".into();
+        self.checked = false;
         let rt = self.rt.clone();
         let tx = self.tx.clone();
         let model = self.model.clone();
@@ -351,10 +355,13 @@ impl App {
                     Ok(out) => {
                         self.session_id = Some(out.session_id.clone());
                         match out.status {
-                            SessionStatus::Completed => self.items.push(ChatItem::Note(
-                                "✔ Pronto — o resultado foi conferido.".into(),
-                                Tone::Success,
-                            )),
+                            SessionStatus::Completed if self.checked => {
+                                self.items.push(ChatItem::Note(
+                                    "✔ Pronto — o resultado foi conferido.".into(),
+                                    Tone::Success,
+                                ))
+                            }
+                            SessionStatus::Completed => {}
                             SessionStatus::CompletedUnverified => {}
                             SessionStatus::Cancelled => self
                                 .items
@@ -461,6 +468,7 @@ impl App {
                     }
                     AgentEvent::VerificationResult { passed, notes } => {
                         self.verifying = false;
+                        self.checked = passed;
                         self.activity.push(format!(
                             "{ts} verificação: {}",
                             if passed {
@@ -496,6 +504,7 @@ impl App {
         let cancel = CancellationToken::new();
         self.running = Some(cancel.clone());
         self.status = "Continuando…".into();
+        self.checked = false;
         let rt = self.rt.clone();
         let tx = self.tx.clone();
         let model = self.model.clone();

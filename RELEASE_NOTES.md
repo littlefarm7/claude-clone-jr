@@ -1,4 +1,16 @@
-## Claudio Code v0.4.0 — fácil para qualquer pessoa
+## Claudio Code v0.4.1 — correções
+
+- **Corrigido:** “Algo deu errado… o release v0.7.0 não tem build pronta de llama.cpp” ao clicar em
+  **Instalar e começar**. O Claudio agora encontra o pacote oficial certo (testado com o llama.cpp b11829 real).
+- **Corrigido:** o motor de IA podia travar ao carregar o modelo de 4,6 GB.
+- Downloads grandes continuam sozinhos se a internet cair.
+- “Resultado conferido” só aparece quando houve conferência.
+
+Quem viu o erro: atualize para esta versão e clique de novo em **Configurar IA** → **No meu computador**.
+
+---
+
+## Claudio Code v0.4 — fácil para qualquer pessoa
 
 Agente de IA autônomo, local-first e open source (Apache-2.0), para Linux, Windows e macOS.
 
@@ -26,9 +38,9 @@ Agente de IA autônomo, local-first e open source (Apache-2.0), para Linux, Wind
 
 | Sistema | Arquivo |
 |---|---|
-| Linux x86_64 (glibc ≥ 2.31) | `Claudio_Code-0.4.0-x86_64.AppImage` ou `…-linux-x86_64.tar.gz` |
-| Windows 10/11 x64 | `Claudio_Code-0.4.0-windows-x86_64.zip` |
-| macOS 11+ (Apple Silicon e Intel) | `Claudio_Code-0.4.0-macos-universal.dmg` ou `…-macos-universal.tar.gz` |
+| Linux x86_64 (glibc ≥ 2.31) | `Claudio_Code-0.4.1-x86_64.AppImage` ou `…-linux-x86_64.tar.gz` |
+| Windows 10/11 x64 | `Claudio_Code-0.4.1-windows-x86_64.zip` |
+| macOS 11+ (Apple Silicon e Intel) | `Claudio_Code-0.4.1-macos-universal.dmg` ou `…-macos-universal.tar.gz` |
 
 Confira os arquivos com `SHA256SUMS.txt`.
 

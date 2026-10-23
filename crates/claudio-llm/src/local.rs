@@ -1,7 +1,9 @@
 //! Lifecycle of a local llama.cpp `llama-server` (always bound to 127.0.0.1).
 
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
@@ -81,43 +83,48 @@ impl LlamaServer {
         if let Some(t) = opts.threads {
             cmd.args(["-t", &t.to_string()]);
         }
-        let child = cmd
+        let mut child = cmd
             .spawn()
             .with_context(|| format!("falha ao iniciar {}", bin.display()))?;
+        // Read stderr from the start: llama-server logs a lot while loading a
+        // big model, and a full pipe would block it before it becomes ready.
+        let log: Arc<Mutex<VecDeque<String>>> = Arc::default();
+        if let Some(e) = child.stderr.take() {
+            let log = log.clone();
+            tokio::spawn(async move {
+                use tokio::io::AsyncBufReadExt;
+                let mut lines = tokio::io::BufReader::new(e).lines();
+                while let Ok(Some(l)) = lines.next_line().await {
+                    let mut q = log.lock().unwrap();
+                    if q.len() == 20 {
+                        q.pop_front();
+                    }
+                    q.push_back(l);
+                }
+            });
+        }
         let base_url = format!("http://127.0.0.1:{}/v1", opts.port);
         let mut server = Self { child, base_url };
         let started = Instant::now();
-        while started.elapsed() < Duration::from_secs(300) {
+        while started.elapsed() < Duration::from_secs(600) {
             if let Some(status) = server.child.try_wait()? {
-                let mut err = String::new();
-                if let Some(mut e) = server.child.stderr.take() {
-                    use tokio::io::AsyncReadExt;
-                    let _ = e.read_to_string(&mut err).await;
-                }
-                let tail: String = err
-                    .lines()
-                    .rev()
-                    .take(15)
-                    .collect::<Vec<_>>()
-                    .into_iter()
-                    .rev()
+                // Give the reader a moment to collect the last lines.
+                tokio::time::sleep(Duration::from_millis(200)).await;
+                let tail = log
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .cloned()
                     .collect::<Vec<_>>()
                     .join("\n");
                 bail!("llama-server saiu com {status}:\n{tail}");
             }
             if health(&server.base_url).await {
-                // Drain stderr in the background so the pipe never fills.
-                if let Some(mut e) = server.child.stderr.take() {
-                    tokio::spawn(async move {
-                        let mut sink = tokio::io::sink();
-                        let _ = tokio::io::copy(&mut e, &mut sink).await;
-                    });
-                }
                 return Ok(server);
             }
             tokio::time::sleep(Duration::from_millis(500)).await;
         }
-        bail!("llama-server não ficou pronto em 300 s")
+        bail!("llama-server não ficou pronto em 600 s")
     }
 
     pub async fn stop(mut self) {
