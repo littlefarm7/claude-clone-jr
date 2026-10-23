@@ -977,17 +977,114 @@ pub async fn voice(cli: Arc<Cli>, cmd: &VoiceCmd) -> Result<i32> {
             println!("áudio em {} ({engine})", out.display());
             play_wav(out).await;
         }
-        VoiceCmd::Listen { seconds } => {
-            let wav = dir.path().join("mic.wav");
-            println!("gravando {seconds} s…");
-            record_mic(&wav, *seconds).await?;
-            let text = claudio_tools::voice::transcribe(&wav, "pt", &ctx).await?;
+        VoiceCmd::Listen => {
+            println!("{}", cyan("🎤 pode falar…"));
+            let utt = claudio_tools::speech::listen_utterance(
+                &ctrlc_token(),
+                std::time::Duration::from_secs(15),
+                |_| {},
+            )
+            .await?;
+            let Some(samples) = utt else {
+                println!("não ouvi nada");
+                return Ok(1);
+            };
+            let text = claudio_tools::speech::transcribe(&cfg, samples).await?;
             println!("{} {text}", cyan("você disse:"));
             if !text.trim().is_empty() {
                 return run_task(cli.clone(), text, None).await;
             }
         }
+        VoiceCmd::Chat => return voice_chat(cli.clone()).await,
+        VoiceCmd::Setup { cloud } => {
+            let mut cfg = cfg;
+            if *cloud {
+                let (_, name) = claudio_tools::speech::cloud_stt(&cfg).context(
+                    "nenhuma conta OpenAI, Groq ou Gemini configurada (claudio models add-api)",
+                )?;
+                cfg.voice.stt = "cloud".into();
+                cfg.save()?;
+                println!("A voz será entendida pela sua conta {name} (o áudio é enviado para lá).");
+                return Ok(0);
+            }
+            let progress = claudio_tools::downloads::new_progress();
+            let cancel = ctrlc_token();
+            let p2 = progress.clone();
+            let task = {
+                let mut c = cfg.clone();
+                let cancel = cancel.clone();
+                tokio::spawn(async move {
+                    claudio_tools::speech::setup_voice(&mut c, &p2, &cancel, |ph| println!("{ph}"))
+                        .await
+                        .map(|_| c)
+                })
+            };
+            while !task.is_finished() {
+                let p = progress.lock().unwrap().clone();
+                if let Some(f) = p.fraction() {
+                    eprint!("\r  {:5.1}%  ", f * 100.0);
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
+            eprintln!();
+            let new_cfg = task.await??;
+            new_cfg.save()?;
+            println!("{}", green("Voz ativada. Use: claudio voice chat"));
+        }
     }
+    Ok(0)
+}
+
+/// Voice conversation in the terminal.
+async fn voice_chat(cli: Arc<Cli>) -> Result<i32> {
+    let rt = runtime(&cli).await?;
+    if !claudio_tools::speech::status(&rt.cfg).can_listen() {
+        bail!("a voz ainda não está ativada: rode `claudio voice setup` (ou `claudio voice setup --cloud`)");
+    }
+    let approver = approver(&cli, None);
+    let sink: Arc<dyn EventSink> = Arc::new(Printer { json: cli.json });
+    let cancel = ctrlc_token();
+    let mut session: Option<String> = None;
+    println!(
+        "{}",
+        bold("Conversa por voz — fale normalmente; uma pausa envia. Ctrl+C sai.")
+    );
+    loop {
+        println!("{}", cyan("🎤 ouvindo…"));
+        let utt = claudio_tools::speech::listen_utterance(
+            &cancel,
+            std::time::Duration::from_secs(30),
+            |_| {},
+        )
+        .await?;
+        if cancel.is_cancelled() {
+            break;
+        }
+        let Some(samples) = utt else {
+            println!("(silêncio — conversa encerrada)");
+            break;
+        };
+        let text = claudio_tools::speech::transcribe(&rt.cfg, samples).await?;
+        if text.trim().is_empty() {
+            continue;
+        }
+        println!("{} {text}", cyan("você:"));
+        let sel = rt
+            .select_model(cli.model.as_deref(), &text, approver.as_ref())
+            .await?;
+        let agent = rt.agent(&sel, approver.clone(), sink.clone());
+        let out = match &session {
+            Some(id) => agent.send(id, &text, cancel.child_token()).await?,
+            None => agent.start(&text, cancel.child_token()).await?,
+        };
+        session = Some(out.session_id.clone());
+        if rt.cfg.voice.speak_replies {
+            if let Err(e) = claudio_tools::speech::speak(&rt.cfg, &out.summary, &cancel).await {
+                eprintln!("{} {e:#}", yellow("⚠ não consegui falar:"));
+            }
+        }
+    }
+    rt.shutdown().await;
     Ok(0)
 }
 
@@ -1018,39 +1115,4 @@ async fn play_wav(path: &Path) {
     if let Err(e) = status {
         eprintln!("não foi possível tocar o áudio: {e}");
     }
-}
-
-/// Record from the default microphone (16 kHz mono WAV).
-async fn record_mic(wav: &Path, seconds: u32) -> Result<()> {
-    use tokio::process::Command;
-    let secs = seconds.to_string();
-    let status = if cfg!(target_os = "linux") && claudio_tools::shell::which("arecord").is_some() {
-        Command::new("arecord")
-            .args(["-q", "-f", "S16_LE", "-r", "16000", "-c", "1", "-d", &secs])
-            .arg(wav)
-            .status()
-            .await?
-    } else {
-        // macOS (AVFoundation) and Windows (DirectShow) through ffmpeg.
-        let ffmpeg = claudio_tools::shell::which("ffmpeg")
-            .context("gravar do microfone requer ffmpeg (ou arecord no Linux)")?;
-        let input: Vec<&str> = if cfg!(target_os = "macos") {
-            vec!["-f", "avfoundation", "-i", ":0"]
-        } else if cfg!(windows) {
-            vec!["-f", "dshow", "-i", "audio=default"]
-        } else {
-            vec!["-f", "pulse", "-i", "default"]
-        };
-        Command::new(ffmpeg)
-            .args(["-hide_banner", "-loglevel", "error", "-y"])
-            .args(input)
-            .args(["-t", &secs, "-ar", "16000", "-ac", "1"])
-            .arg(wav)
-            .status()
-            .await?
-    };
-    if !status.success() {
-        bail!("falha ao gravar do microfone");
-    }
-    Ok(())
 }

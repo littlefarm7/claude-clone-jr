@@ -2,17 +2,22 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 //! `claudio-gui` — desktop interface (egui) over the same core as the CLI.
 
+mod admin;
 mod friendly;
 mod onboarding;
 mod settings;
 mod theme;
+mod voice_ui;
 
 use std::sync::Arc;
 
 use anyhow::Result;
 use async_trait::async_trait;
 use claudio_core::config::Config;
-use claudio_core::events::{AgentEvent, ApprovalDecision, ApprovalRequest, Approver, EventSink};
+use claudio_core::events::{
+    AgentEvent, ApprovalDecision, ApprovalRequest, Approver, ElevationRequest, ElevationResponse,
+    EventSink,
+};
 use claudio_core::plan::{Plan, StepStatus};
 use claudio_core::secrets::Secrets;
 use claudio_core::store::{MemoryRecord, SessionRecord, SessionStatus};
@@ -29,6 +34,7 @@ use tokio_util::sync::CancellationToken;
 enum UiMsg {
     Event(AgentEvent),
     Approval(ApprovalRequest, oneshot::Sender<ApprovalDecision>),
+    Elevation(ElevationRequest, oneshot::Sender<ElevationResponse>),
     Done(Result<RunOutcome, String>),
     Availability(Vec<(String, Availability)>),
 }
@@ -59,6 +65,15 @@ impl Approver for GuiApprover {
         }
         self.ctx.request_repaint();
         rx.await.unwrap_or(ApprovalDecision::Deny)
+    }
+
+    async fn elevate(&self, req: ElevationRequest) -> ElevationResponse {
+        let (tx, rx) = oneshot::channel();
+        if self.tx.send(UiMsg::Elevation(req, tx)).is_err() {
+            return ElevationResponse::Denied;
+        }
+        self.ctx.request_repaint();
+        rx.await.unwrap_or(ElevationResponse::Denied)
     }
 }
 
@@ -111,6 +126,7 @@ struct App {
     availability: Vec<(String, Availability)>,
     running: Option<CancellationToken>,
     approvals: Vec<(ApprovalRequest, Option<oneshot::Sender<ApprovalDecision>>)>,
+    admin_prompts: Vec<admin::AdminPrompt>,
     tab: RightTab,
     show_details: bool,
     /// The agent is checking its own result: keep that out of the chat.
@@ -122,6 +138,11 @@ struct App {
     settings: settings::Settings,
     onboarding: onboarding::Onboarding,
     logo: Option<egui::TextureHandle>,
+    voice: voice_ui::VoiceUi,
+    /// The last message came from the microphone: answer aloud.
+    voice_turn: bool,
+    /// Answer to read aloud once the task finishes.
+    pending_speak: Option<String>,
 }
 
 impl App {
@@ -168,6 +189,7 @@ impl App {
             availability: Vec::new(),
             running: None,
             approvals: Vec::new(),
+            admin_prompts: Vec::new(),
             tab: RightTab::Plan,
             show_details: false,
             verifying: false,
@@ -175,6 +197,9 @@ impl App {
             status: String::new(),
             search: String::new(),
             logo,
+            voice: voice_ui::VoiceUi::default(),
+            voice_turn: false,
+            pending_speak: None,
         };
         for w in app.rt.warnings.clone() {
             app.activity.push(format!("aviso: {w}"));
@@ -347,10 +372,19 @@ impl App {
         match msg {
             UiMsg::Availability(a) => self.availability = a,
             UiMsg::Approval(req, tx) => self.approvals.push((req, Some(tx))),
+            UiMsg::Elevation(req, tx) => self.admin_prompts.push(admin::AdminPrompt::new(req, tx)),
             UiMsg::Done(r) => {
                 self.running = None;
                 self.verifying = false;
                 self.status.clear();
+                if (self.voice.conversation || self.voice_turn) && self.rt.cfg.voice.speak_replies {
+                    let last = self.items.iter().rev().find_map(|i| match i {
+                        ChatItem::Assistant(t) => Some(t.clone()),
+                        ChatItem::User(_) => Some(String::new()),
+                        _ => None,
+                    });
+                    self.pending_speak = Some(last.unwrap_or_default());
+                }
                 match r {
                     Ok(out) => {
                         self.session_id = Some(out.session_id.clone());
@@ -632,6 +666,60 @@ impl App {
         }
     }
 
+    fn voice_events(&mut self, ctx: &egui::Context) {
+        if let Some(text) = self.pending_speak.take() {
+            if text.trim().is_empty() {
+                if self.voice.conversation {
+                    self.voice.listen(&self.rt.cfg, &self.tokio, ctx);
+                }
+            } else {
+                self.voice.speak(&self.rt.cfg, text, &self.tokio, ctx);
+            }
+        }
+        let cfg = self.rt.cfg.clone();
+        for ev in self.voice.poll(&cfg, &self.tokio, ctx) {
+            match ev {
+                voice_ui::VoiceEvent::Heard(t) => {
+                    if self.running.is_none() {
+                        self.input = t;
+                        self.voice_turn = true;
+                        self.send(ctx);
+                    }
+                }
+                voice_ui::VoiceEvent::Silence => {
+                    if self.voice.conversation {
+                        self.voice.conversation = false;
+                        self.items.push(ChatItem::Note(
+                            "Conversa por voz pausada: não ouvi nada. Clique em “Conversa por voz” para continuar.".into(),
+                            Tone::Muted,
+                        ));
+                    }
+                }
+                voice_ui::VoiceEvent::Error(e) => self.items.push(ChatItem::Note(
+                    format!(
+                        "Voz: {}",
+                        setup::friendly_error(&e)
+                            .replace("Algo deu errado. Detalhes técnicos: ", "")
+                    ),
+                    Tone::Warning,
+                )),
+                voice_ui::VoiceEvent::Configured(new_cfg) => {
+                    let secrets =
+                        Secrets::load_from(&claudio_core::secrets::secrets_path_for(&new_cfg))
+                            .unwrap_or_default();
+                    if self.apply_config(ctx, &new_cfg, &secrets) {
+                        self.items.push(ChatItem::Note(
+                            "✔ Voz ativada. Clique no 🎤 e fale; eu respondo em voz alta.".into(),
+                            Tone::Success,
+                        ));
+                        let cfg = self.rt.cfg.clone();
+                        self.voice.after_configured(&cfg, &self.tokio, ctx);
+                    }
+                }
+            }
+        }
+    }
+
     fn approval_window(&mut self, ctx: &egui::Context) {
         let Some((req, _)) = self.approvals.first() else {
             return;
@@ -899,6 +987,28 @@ impl App {
                         if theme::pill_button(ui, format!("ℹ  {label}")).clicked() {
                             self.show_details = !self.show_details;
                         }
+                        let on = self.voice.conversation;
+                        let b = egui::Button::new(
+                            RichText::new("🎤  Conversa por voz").color(if on { p.on_accent } else { p.text }),
+                        )
+                        .fill(if on { p.accent } else { p.surface_hover })
+                        .corner_radius(CornerRadius::same(22))
+                        .min_size(Vec2::new(0.0, 34.0));
+                        if ui
+                            .add(b)
+                            .on_hover_text("Fale e ouça as respostas; o Claudio volta a ouvir depois de responder")
+                            .clicked()
+                        {
+                            if on {
+                                self.voice.conversation = false;
+                                self.voice.stop();
+                            } else {
+                                self.voice.conversation = true;
+                                if self.running.is_none() {
+                                    self.voice.listen(&self.rt.cfg, &self.tokio, ctx);
+                                }
+                            }
+                        }
                     });
                 });
             });
@@ -1050,6 +1160,24 @@ impl App {
                     });
                     ui.add_space(4.0);
                 }
+                let voice_line = match self.voice.state {
+                    voice_ui::VoiceState::Waiting => Some("🎤 Pode falar, estou ouvindo…"),
+                    voice_ui::VoiceState::Hearing => Some("🎤 Ouvindo…"),
+                    voice_ui::VoiceState::Transcribing => Some("⏳ Entendendo o que você disse…"),
+                    voice_ui::VoiceState::Speaking => {
+                        Some("🔊 Falando… (clique no microfone para interromper)")
+                    }
+                    voice_ui::VoiceState::Idle => None,
+                };
+                if let Some(t) = voice_line {
+                    ui.horizontal(|ui| {
+                        if self.voice.state != voice_ui::VoiceState::Speaking {
+                            ui.spinner();
+                        }
+                        ui.label(RichText::new(t).color(p.accent));
+                    });
+                    ui.add_space(4.0);
+                }
                 egui::Frame::new()
                     .fill(p.surface)
                     .stroke(Stroke::new(1.0_f32, p.border))
@@ -1070,7 +1198,7 @@ impl App {
                                 .hint_text("Peça algo ao Claudio…")
                                 .frame(false)
                                 .desired_rows(1)
-                                .desired_width(ui.available_width() - 56.0)
+                                .desired_width(ui.available_width() - 104.0)
                                 .return_key(Some(egui::KeyboardShortcut::new(
                                     egui::Modifiers::SHIFT,
                                     egui::Key::Enter,
@@ -1103,8 +1231,35 @@ impl App {
                                         if ui.add(b).on_hover_text("Enviar (Enter)").clicked()
                                             || send_key
                                         {
+                                            self.voice_turn = false;
                                             self.send(ctx);
                                             r.request_focus();
+                                        }
+                                    }
+                                    let listening = matches!(
+                                        self.voice.state,
+                                        voice_ui::VoiceState::Waiting | voice_ui::VoiceState::Hearing
+                                    );
+                                    let mic = egui::Button::new(
+                                        RichText::new("🎤").size(18.0).color(if listening {
+                                            p.on_accent
+                                        } else {
+                                            p.text
+                                        }),
+                                    )
+                                    .fill(if listening { p.danger } else { p.surface_hover })
+                                    .corner_radius(CornerRadius::same(20))
+                                    .min_size(Vec2::splat(40.0));
+                                    let tip = if listening { "Parar de ouvir" } else { "Falar (microfone)" };
+                                    if ui
+                                        .add_enabled(self.running.is_none(), mic)
+                                        .on_hover_text(tip)
+                                        .clicked()
+                                    {
+                                        if listening {
+                                            self.voice.stop();
+                                        } else {
+                                            self.voice.listen(&self.rt.cfg, &self.tokio, ctx);
                                         }
                                     }
                                 },
@@ -1422,6 +1577,7 @@ impl eframe::App for App {
         while let Ok(m) = self.rx.try_recv() {
             self.handle(m);
         }
+        self.voice_events(ctx);
         self.sidebar(ctx);
         self.top_bar(ctx);
         self.details_panel(ctx);
@@ -1429,6 +1585,11 @@ impl eframe::App for App {
         self.chat(ctx);
 
         self.approval_window(ctx);
+        if let Some(prompt) = self.admin_prompts.first_mut() {
+            if prompt.show(ctx) {
+                self.admin_prompts.remove(0);
+            }
+        }
         match self.settings.show(ctx, &self.tokio, self.running.is_some()) {
             settings::Action::Save => self.apply_settings(ctx),
             settings::Action::Setup => {
@@ -1437,7 +1598,12 @@ impl eframe::App for App {
             }
             settings::Action::None => {}
         }
+        if std::mem::take(&mut self.settings.want_voice_setup) {
+            self.settings.open = false;
+            self.voice.open_setup();
+        }
         let cfg = self.rt.cfg.clone();
+        self.voice.setup_window(ctx, &cfg, &self.tokio);
         let outcome = self.onboarding.show(ctx, &cfg, &self.tokio);
         self.finish_onboarding(ctx, outcome);
     }

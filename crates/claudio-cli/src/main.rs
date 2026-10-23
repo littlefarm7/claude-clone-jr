@@ -132,6 +132,21 @@ pub enum Cmd {
     },
     /// Verifica o ambiente (dependências, modelos, permissões)
     Doctor,
+    /// Chaves de serviços externos usadas pelo agente como {{secret:NOME}}
+    Secret {
+        #[command(subcommand)]
+        cmd: SecretCmd,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SecretCmd {
+    /// Guarda uma chave (pedida sem aparecer na tela)
+    Set { name: String },
+    /// Lista os nomes (nunca os valores)
+    List,
+    /// Remove uma chave
+    Remove { name: String },
 }
 
 #[derive(Subcommand)]
@@ -237,10 +252,15 @@ pub enum VoiceCmd {
         #[arg(long, default_value = "fala.wav")]
         out: std::path::PathBuf,
     },
-    /// Grava do microfone (arecord), transcreve e executa como tarefa
-    Listen {
-        #[arg(long, default_value_t = 5)]
-        seconds: u32,
+    /// Ouve uma frase do microfone (para sozinho na pausa), transcreve e executa como tarefa
+    Listen,
+    /// Conversa por voz: ouve, responde falando e volta a ouvir (Ctrl+C sai)
+    Chat,
+    /// Instala o reconhecimento de voz e a voz em português (uma vez)
+    Setup {
+        /// Usa a sua conta na nuvem (OpenAI, Groq ou Gemini) para entender a voz
+        #[arg(long)]
+        cloud: bool,
     },
 }
 
@@ -330,5 +350,6 @@ async fn run(cli: Cli) -> Result<i32> {
         Some(Cmd::Config { cmd }) => commands::config(&cli, cmd).await,
         Some(Cmd::Consent { cmd }) => commands::consent(&cli, cmd).await,
         Some(Cmd::Doctor) => commands::doctor(&cli).await,
+        Some(Cmd::Secret { cmd }) => models::secret_cmd(&cli, cmd).await,
     }
 }

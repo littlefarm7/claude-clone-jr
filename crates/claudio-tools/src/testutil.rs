@@ -33,6 +33,7 @@ pub fn context_with(cfg: Config) -> ToolContext {
         max_output: 20_000,
         events: Arc::new(NullSink),
         subagents: None,
+        approver: None,
         cfg: Arc::new(cfg),
     }
 }

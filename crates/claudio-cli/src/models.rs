@@ -320,3 +320,40 @@ pub async fn llama_install(cli: &Cli, variant: &str) -> Result<i32> {
     println!("{} {}", green("llama-server instalado:"), server.display());
     Ok(0)
 }
+
+pub async fn secret_cmd(cli: &Cli, cmd: &crate::SecretCmd) -> Result<i32> {
+    use claudio_tools::api::{check_secret_name, SECRET_PREFIX};
+    let cfg = load_config(cli)?;
+    let path = claudio_core::secrets::secrets_path_for(&cfg);
+    let mut store = Secrets::load_from(&path)?;
+    match cmd {
+        crate::SecretCmd::Set { name } => {
+            check_secret_name(name)?;
+            let v = read_key(name)?;
+            if v.trim().is_empty() {
+                bail!("valor vazio");
+            }
+            store.set(&format!("{SECRET_PREFIX}{name}"), &v);
+            store.save_to(&path)?;
+            println!(
+                "{} guardada. O agente pode usar {{{{secret:{name}}}}} em http_request.",
+                green(name)
+            );
+        }
+        crate::SecretCmd::List => {
+            for k in store
+                .keys
+                .keys()
+                .filter_map(|k| k.strip_prefix(SECRET_PREFIX))
+            {
+                println!("{k}");
+            }
+        }
+        crate::SecretCmd::Remove { name } => {
+            store.keys.remove(&format!("{SECRET_PREFIX}{name}"));
+            store.save_to(&path)?;
+            println!("{name} removida");
+        }
+    }
+    Ok(0)
+}

@@ -52,6 +52,10 @@ def decide(messages):
             lambda: text("Relatório criado em saida/relatorio.txt."),
         ]
         return steps[min(n, len(steps) - 1)]()
+    if "administrador" in user_task:
+        if n == 0:
+            return call("admin_command", {"command": "id -u", "reason": "conferir o acesso de administrador"})
+        return text("Resultado: " + tool_msgs[-1]["content"][:200])
     if "sudo" in user_task:
         if n == 0:
             return call("shell", {"command": "sudo apt install cowsay"})

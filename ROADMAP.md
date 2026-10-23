@@ -56,15 +56,27 @@ Total na v0.1: 73 testes automatizados passando (`cargo test --workspace`), `cli
 | Instalação do llama.cpp com releases atuais (b#### como pré-lançamento) | pacotes oficiais b11829 (CPU e Vulkan) baixados do GitHub e servidos por espelho local; GUI sob Xvfb instalou, iniciou e conversou | ✅ |
 | Visual novo (tema claro/escuro), textos simples, permissões amigáveis | GUI sob Xvfb nos dois temas | ✅ |
 
+## v0.5 — assistente pessoal
+
+| Item | Verificação | Status |
+|---|---|---|
+| Elevação sudo com senha (GUI e CLI) | usuário comum real: senha certa executa como root, senha errada não executa; senha ausente de banco, auditoria e logs | ✅ |
+| Elevação no Windows (UAC) e polkit | testes de geração do script; sem Windows interativo no ambiente | 🟡 |
+| Navegador interativo (CDP) | Chromium real contra site local: abrir, ler, escolher, digitar+enviar, voltar, clicar, captura; recusa campo de senha | ✅ |
+| `http_request` + segredos | servidor local: chave enviada, oculta na resposta; host privado bloqueado | ✅ |
+| Voz: microfone, fim da fala, conversa contínua (GUI e CLI) | áudio real do espeak-ng pelo “microfone”; GUI sob Xvfb em ciclo ouvir→responder→ouvir | ✅ |
+| Voz: whisper.cpp embutido | modelo de teste com pesos aleatórios carrega e transcreve; modelo real não baixável no ambiente | 🟡 |
+| Voz: Piper e microfone nativo (macOS/Windows) | instalação a partir de espelho testada; reprodução real e cpal sem hardware de áudio no ambiente | 🟡 |
+| Honestidade (prompt) | revisão; depende da qualidade do modelo | 🟡 |
+
 ## Próximos passos
 
 1. Validar com modelos reais no LMDE (Qwen2.5‑7B Q4_K_M; build Vulkan na RX 5500 XT) e ajustar prompts.
 2. Streaming de tokens na GUI e na CLI.
-3. Navegador interativo via CDP (cliques, formulários, login assistido).
-4. Visão: anexar imagens às mensagens para modelos multimodais.
-5. Transporte MCP HTTP (streamable HTTP) e recursos/prompts MCP.
-6. Voz contínua (detecção de atividade de voz) e atalho global.
-7. Permissões por ferramenta na GUI (o modo geral já é editável em Configurações → Geral).
-8. Pacote .deb e repositório APT opcional.
-9. Windows: isolamento de processos (AppContainer/Job Objects) e instalador MSI assinado.
-10. macOS: notarização com conta de desenvolvedor Apple.
+3. Visão: anexar imagens às mensagens para modelos multimodais.
+4. Transporte MCP HTTP (streamable HTTP) e recursos/prompts MCP.
+5. Atalho global para falar com o Claudio e interrupção da fala por voz.
+6. Permissões por ferramenta na GUI (o modo geral já é editável em Configurações → Geral).
+7. Pacote .deb e repositório APT opcional.
+8. Windows: isolamento de processos (AppContainer/Job Objects) e instalador MSI assinado.
+9. macOS: notarização com conta de desenvolvedor Apple.

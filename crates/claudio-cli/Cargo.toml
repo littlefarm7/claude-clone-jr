@@ -21,6 +21,7 @@ chrono.workspace = true
 tracing.workspace = true
 libc = "0.2"
 rpassword = "7"
+zeroize.workspace = true
 clap = { version = "4", features = ["derive"] }
 toml.workspace = true
 serde.workspace = true

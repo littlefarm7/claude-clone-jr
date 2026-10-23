@@ -63,6 +63,9 @@ pub struct RiskAssessment {
     pub summary: String,
     /// Tool-level override (e.g. path outside workspace).
     pub force: Option<Forced>,
+    /// The tool asks for administrator rights itself (password / UAC screen
+    /// that also shows the command), so the generic approval is skipped.
+    pub elevation: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,7 +80,15 @@ impl RiskAssessment {
             risk,
             summary: summary.into(),
             force: None,
+            elevation: false,
         }
+    }
+    /// Mark an administrative call whose consent is collected by the
+    /// elevation prompt (see `Approver::elevate`).
+    pub fn elevated(mut self) -> Self {
+        self.risk = Risk::Admin;
+        self.elevation = true;
+        self
     }
     pub fn deny(mut self, why: impl Into<String>) -> Self {
         self.force = Some(Forced::Deny(why.into()));

@@ -75,6 +75,8 @@ pub struct ToolContext {
     pub max_output: usize,
     pub events: Arc<dyn EventSink>,
     pub subagents: Option<Arc<dyn SubagentRunner>>,
+    /// Used by tools that need the user's credentials (administrator rights).
+    pub approver: Option<Arc<dyn crate::events::Approver>>,
 }
 
 #[async_trait]

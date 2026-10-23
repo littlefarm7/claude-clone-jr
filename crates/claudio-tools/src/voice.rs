@@ -29,13 +29,14 @@ pub fn whisper_bin(cfg: &Config) -> Option<PathBuf> {
 
 /// Status line for `claudio doctor` and the GUI.
 pub fn status(cfg: &Config) -> (bool, bool) {
-    let stt = whisper_bin(cfg).is_some()
-        && cfg
-            .voice
-            .whisper_model
-            .as_deref()
-            .map(|m| expand(m).is_file())
-            .unwrap_or(false);
+    let stt = crate::speech::status(cfg).local_stt
+        || whisper_bin(cfg).is_some()
+            && cfg
+                .voice
+                .whisper_model
+                .as_deref()
+                .map(|m| expand(m).is_file())
+                .unwrap_or(false);
     let tts = (cfg.voice.piper_model.is_some()
         && (cfg.voice.piper_bin.is_some() || which("piper").is_some()))
         || which("espeak-ng").is_some()
@@ -46,7 +47,51 @@ pub fn status(cfg: &Config) -> (bool, bool) {
 
 /// Speech to text. Converts any input to 16 kHz mono WAV with ffmpeg first.
 pub async fn transcribe(path: &Path, lang: &str, ctx: &ToolContext) -> Result<String> {
-    let bin = whisper_bin(&ctx.cfg).context("whisper.cpp não encontrado (veja docs/VOICE.md)")?;
+    // Built-in whisper.cpp (installed with "Ativar voz") when available.
+    if let Some(model) = crate::speech::whisper_model_path(&ctx.cfg)
+        .filter(|_| crate::speech::cpu_supports_local_stt())
+    {
+        let is_wav = path
+            .extension()
+            .map(|e| e.eq_ignore_ascii_case("wav"))
+            .unwrap_or(false);
+        let tmp = tempfile::tempdir()?;
+        let wav = if is_wav {
+            path.to_path_buf()
+        } else {
+            if which("ffmpeg").is_none() {
+                bail!("para transcrever este formato instale o ffmpeg (ou envie um arquivo .wav)");
+            }
+            let out = tmp.path().join("in.wav");
+            let a: Vec<String> = vec![
+                "-hide_banner".into(),
+                "-nostdin".into(),
+                "-y".into(),
+                "-i".into(),
+                path.to_string_lossy().into(),
+                "-ar".into(),
+                "16000".into(),
+                "-ac".into(),
+                "1".into(),
+                out.to_string_lossy().into(),
+            ];
+            let r = run_command(
+                build_command("ffmpeg", &a, tmp.path(), ctx, false),
+                Duration::from_secs(600),
+                ctx,
+            )
+            .await?;
+            if !r.ok() {
+                bail!("ffmpeg falhou ao preparar o áudio: {}", r.stderr);
+            }
+            out
+        };
+        let samples = crate::speech::read_wav(&wav)?;
+        return crate::speech::transcribe_local(model, samples, lang).await;
+    }
+    let bin = whisper_bin(&ctx.cfg).context(
+        "reconhecimento de voz não instalado: ative em Configurações → Voz (ou instale o whisper.cpp)",
+    )?;
     let model = ctx
         .cfg
         .voice

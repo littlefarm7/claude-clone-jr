@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.5.0
+- Conversa por voz em tempo real: botão de microfone, modo “Conversa por voz” (ouve → responde falando → ouve
+  de novo), detecção automática do fim da fala, whisper.cpp embutido (sem instalar nada), voz Piper em pt_BR,
+  opção de usar OpenAI/Groq/Gemini; ativação com um clique; `claudio voice setup|chat|listen`.
+- Comandos de administrador com autorização: tela com o comando exato, “assumo a responsabilidade” e senha
+  (sudo -S, senha nunca exposta ao modelo/logs, ticket revogado ao fim); polkit e UAC (Windows); ferramenta
+  `admin_command`; `shell` com `sudo` usa a mesma tela.
+- Navegador interativo `browser_session` (CDP): abrir, ler com elementos numerados, clicar, digitar, escolher,
+  teclas, rolar, voltar, captura; janela visível e perfil com logins persistentes; nunca digita senhas.
+- `http_request` para APIs e serviços externos, com chaves `{{secret:NOME}}` (`claudio secret set`) que o
+  modelo nunca vê.
+- Instruções de honestidade: pesquisar quando não souber, citar fontes, corrigir o usuário com educação,
+  admitir e corrigir os próprios erros, separar fato de suposição.
+- Testes novos: elevação com sudo real, APIs, navegador real, pipeline de voz (espeak → microfone → whisper).
+
 ## 0.4.1
 - Corrige a instalação automática da IA no computador: o llama.cpp passou a publicar os programas prontos
   (`b####`) como pré-lançamento, e `/releases/latest` apontava para uma versão só com código-fonte

@@ -1,3 +1,38 @@
+## Claudio Code v0.5.0 — assistente pessoal completo
+
+### Novidades
+
+- **Conversa por voz em tempo real.** Clique no 🎤 ou ligue **Conversa por voz**: você fala, o Claudio percebe
+  quando você termina, responde em voz alta e volta a ouvir. O reconhecimento de voz (Whisper) já vem dentro do
+  aplicativo e roda no seu computador; na primeira vez ele baixa o modelo e uma voz em português com um clique.
+  Quem preferir pode usar a própria conta OpenAI, Groq ou Gemini.
+- **Comandos de administrador com a sua senha.** Quando uma tarefa precisa de `sudo` (ou do administrador no
+  Windows/macOS), aparece uma tela com o comando exato, um aviso e o campo de senha. Você decide e assume a
+  responsabilidade. A senha vai direto para o sistema: a IA nunca a vê.
+- **Navegador de verdade.** O Claudio abre sites numa janela que você acompanha, lê, clica, preenche
+  formulários e tira fotos da tela. Para logins, você mesmo digita a senha na janela.
+- **APIs e serviços externos** com chaves guardadas com segurança (`claudio secret set NOME`).
+- **Mais honesto:** pesquisa quando não sabe, cita fontes, corrige você quando algo está errado e corrige a si
+  mesmo.
+
+### Downloads
+
+| Sistema | Arquivo |
+|---|---|
+| Linux x86_64 (glibc ≥ 2.31) | `Claudio_Code-0.5.0-x86_64.AppImage` ou `…-linux-x86_64.tar.gz` |
+| Windows 10/11 x64 | `Claudio_Code-0.5.0-windows-x86_64.zip` |
+| macOS 11+ (Apple Silicon e Intel) | `Claudio_Code-0.5.0-macos-universal.dmg` ou `…-macos-universal.tar.gz` |
+
+Confira os arquivos com `SHA256SUMS.txt`.
+
+### Avisos
+
+- Reconhecimento de voz no computador: processadores com AVX2 (Intel/AMD de ~2013 em diante, Apple Silicon).
+- Windows: executável sem assinatura comercial (o SmartScreen pode avisar).
+- macOS: assinatura ad hoc, sem notarização. Na primeira vez, clique com o botão direito → Abrir.
+
+---
+
 ## Claudio Code v0.4.1 — correções
 
 - **Corrigido:** “Algo deu errado… o release v0.7.0 não tem build pronta de llama.cpp” ao clicar em

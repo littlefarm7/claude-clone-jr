@@ -37,9 +37,45 @@ Decisão final = política da ferramenta ⊕ classe de risco ⊕ modo ⊕ taint:
 | Write (no workspace) | pedir | pedir | permitir (pedir se contaminado) |
 | Execute | pedir | pedir | pedir |
 | Destructive | pedir | pedir | pedir |
-| Admin | negar | pedir (nunca “sessão”) | pedir (nunca “sessão”) |
+| Admin | negar | tela de administrador (sempre, nunca “sessão”) | tela de administrador (sempre, nunca “sessão”) |
 
 `deny` explícito em `[permissions.tools]` sempre vence.
+
+## Comandos de administrador (sudo / UAC)
+
+Quando uma tarefa exige privilégios (instalar programas, mudar serviços ou configurações do sistema), o agente
+usa a ferramenta `admin_command` (ou um comando do `shell` que contenha `sudo`). Nada roda como administrador
+sem esta tela, **a cada vez**:
+
+- **Linux e macOS:** a tela do Claudio mostra o motivo, o **comando exato**, um aviso e exige marcar
+  “Eu li o comando e assumo a responsabilidade” e digitar a senha. A responsabilidade pelo comando autorizado é
+  do usuário.
+  - A senha vai direto para o `sudo -S` pela entrada padrão do processo; não aparece em argumentos nem em
+    variáveis de ambiente, não é enviada ao modelo, não entra no histórico, na auditoria nem em logs, e é
+    apagada da memória (`zeroize`) logo depois.
+  - O “ticket” do sudo vale só para aquele comando e é revogado no fim (`sudo -k`). Senha errada: nada é
+    executado.
+  - Comandos autorizados rodam fora do isolamento (bubblewrap/sandbox-exec impedem elevação).
+- **Linux sem sudo:** `pkexec` mostra a tela de autorização do sistema (polkit).
+- **Windows:** o Claudio confirma e o Windows mostra a tela do UAC; o comando roda num PowerShell elevado.
+- Modo `strict`, execução não interativa (`run` sem terminal, agendamentos, daemon) e `--yes` **negam**
+  qualquer pedido de administrador.
+- O modelo é instruído a nunca pedir a senha na conversa.
+
+## Serviços externos (APIs)
+
+- `http_request` faz GET/POST/PUT/PATCH/DELETE com a mesma proteção contra acesso à rede local do `web_fetch`.
+- Chaves de serviços ficam no arquivo de chaves (`claudio secret set NOME`) e são usadas como
+  `{{secret:NOME}}`: o valor é inserido só no momento do envio, nunca aparece para o modelo e é removido da
+  resposta. Toda chamada que usa uma chave pede aprovação mostrando o site de destino (protege contra uma
+  página maliciosa tentar enviar a chave para outro lugar). Envios de dados (POST etc.) também pedem aprovação.
+
+## Navegador interativo
+
+- `browser_session` usa um Chromium/Chrome/Edge com perfil próprio (`~/.local/share/claudio/browser-profile`);
+  a janela fica visível para o usuário acompanhar e fazer login ele mesmo.
+- O conteúdo das páginas é marcado como não confiável: depois de ler uma página, cliques e digitação pedem
+  aprovação. O agente se recusa a digitar em campos de senha e envios de formulário com dados pedem aprovação.
 
 ## Isolamento
 
@@ -51,7 +87,7 @@ Decisão final = política da ferramenta ⊕ classe de risco ⊕ modo ⊕ taint:
 - **Linux:** se `bwrap` (bubblewrap) estiver instalado e `sandbox.enabled = true`,
   `shell` roda com `/` somente leitura, workspace gravável, `/tmp` privado e,
   opcionalmente, sem rede (`sandbox.network = false`).
-  LMDE: `sudo apt install bubblewrap` (faça você mesmo; o Claudio não roda sudo).
+  LMDE: `sudo apt install bubblewrap`.
 - No Linux, sem `bwrap` (ou se o sistema proibir user namespaces), o processo roda como o usuário, com cwd no workspace, ambiente
   limpo de segredos, grupo de processos próprio e timeout.
 

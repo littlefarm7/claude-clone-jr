@@ -119,9 +119,41 @@ pub enum ApprovalDecision {
     Deny,
 }
 
+/// How the operating system grants administrator rights.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ElevationKind {
+    /// `sudo` (Linux, macOS): the user types their password in Claudio.
+    Password,
+    /// The system shows its own screen (Windows UAC, polkit).
+    SystemPrompt,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ElevationRequest {
+    pub session_id: String,
+    /// Exact command that will run with administrator rights.
+    pub command: String,
+    /// Why the assistant needs it (written by the model).
+    pub reason: String,
+    pub kind: ElevationKind,
+}
+
+/// Answer to an elevation request. The password is wiped from memory when dropped.
+pub enum ElevationResponse {
+    Password(zeroize::Zeroizing<String>),
+    /// Accepted; the system screen will ask for the credentials.
+    Confirmed,
+    Denied,
+}
+
 #[async_trait]
 pub trait Approver: Send + Sync {
     async fn approve(&self, req: ApprovalRequest) -> ApprovalDecision;
+    /// Ask the user to authorize running `req.command` as administrator.
+    /// The default (non-interactive approvers) always refuses.
+    async fn elevate(&self, _req: ElevationRequest) -> ElevationResponse {
+        ElevationResponse::Denied
+    }
 }
 
 /// Non-interactive: denies everything that needs approval, except tools

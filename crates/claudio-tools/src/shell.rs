@@ -874,13 +874,25 @@ pub fn build_command(
 }
 
 /// Run to completion with timeout, cancellation and output caps.
-pub async fn run_command(
+pub async fn run_command(cmd: Command, timeout: Duration, ctx: &ToolContext) -> Result<ExecResult> {
+    run_command_with_input(cmd, None, timeout, ctx).await
+}
+
+/// Like [`run_command`], writing `input` to stdin first (e.g. the sudo password).
+pub async fn run_command_with_input(
     mut cmd: Command,
+    input: Option<zeroize::Zeroizing<Vec<u8>>>,
     timeout: Duration,
     ctx: &ToolContext,
 ) -> Result<ExecResult> {
     let t0 = Instant::now();
+    if input.is_some() {
+        cmd.stdin(Stdio::piped());
+    }
     let mut child = cmd.spawn().context("falha ao iniciar o processo")?;
+    if let Some(input) = input {
+        crate::elevate::feed_stdin(&mut child, input).await;
+    }
     let pid = child.id();
     let cap = ctx.max_output.max(4096) * 4;
     let out = tokio::spawn(read_capped(child.stdout.take().unwrap(), cap));
@@ -1001,8 +1013,9 @@ impl Tool for Shell {
         ToolSpec {
             name: "shell".into(),
             description: format!(
-                "Executa um comando {} no workspace (sem privilégios de administrador). Retorna exit code, stdout e stderr. \
-                 Use background=true para processos longos e consulte com job_status.",
+                "Executa um comando {} no workspace. Retorna exit code, stdout e stderr. \
+                 Use background=true para processos longos e consulte com job_status. \
+                 Para algo que exige administrador use a ferramenta admin_command (o usuário digita a senha).",
                 if cfg!(windows) { "PowerShell" } else { "bash" }
             ),
             parameters: json!({"type":"object","properties":{
@@ -1020,6 +1033,10 @@ impl Tool for Shell {
             risk = risk.max(Risk::Execute);
         }
         let mut ra = RiskAssessment::new(risk, format!("$ {cmd}"));
+        if crate::elevate::uses_sudo(cmd) {
+            // The sudo password screen shows the command and asks for consent.
+            ra = ra.elevated();
+        }
         if let Some(cwd) = arg_str(args, "cwd") {
             let p = ctx.guard.resolve(cwd);
             match ctx.guard.classify(&p) {
@@ -1043,6 +1060,22 @@ impl Tool for Shell {
                 .unwrap_or(ctx.timeout.as_secs())
                 .clamp(1, 3600),
         );
+        if crate::elevate::uses_sudo(&command) {
+            if arg_bool(&args, "background").unwrap_or(false) {
+                return Ok(ToolOutput::err(
+                    "Comandos com sudo não podem rodar em segundo plano.",
+                ));
+            }
+            return crate::elevate::run_elevated(
+                &command,
+                "comando do terminal que usa sudo",
+                false,
+                &cwd,
+                timeout,
+                ctx,
+            )
+            .await;
+        }
         let (prog, sh_args) = shell_invocation(&command);
         let cmd = build_command(&prog, &sh_args, &cwd, ctx, true);
         if arg_bool(&args, "background").unwrap_or(false) {

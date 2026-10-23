@@ -3,7 +3,10 @@
 use std::io::{IsTerminal, Write};
 
 use async_trait::async_trait;
-use claudio_core::events::{AgentEvent, ApprovalDecision, ApprovalRequest, Approver, EventSink};
+use claudio_core::events::{
+    AgentEvent, ApprovalDecision, ApprovalRequest, Approver, ElevationKind, ElevationRequest,
+    ElevationResponse, EventSink,
+};
 use claudio_core::permissions::Risk;
 use tokio::sync::Mutex;
 
@@ -188,6 +191,65 @@ impl Approver for TerminalApprover {
             "s" | "sim" | "y" | "yes" => ApprovalDecision::AllowOnce,
             "t" | "todas" | "a" | "all" if req.allow_session => ApprovalDecision::AllowSession,
             _ => ApprovalDecision::Deny,
+        }
+    }
+
+    async fn elevate(&self, req: ElevationRequest) -> ElevationResponse {
+        let _g = self.lock.lock().await;
+        if !std::io::stdin().is_terminal() {
+            eprintln!(
+                "{} comando de administrador negado (entrada não interativa): {}",
+                yellow("⚠"),
+                req.command
+            );
+            return ElevationResponse::Denied;
+        }
+        println!("\n{}", bold(&red("Autorização de administrador")));
+        if !req.reason.trim().is_empty() {
+            println!("  Motivo: {}", req.reason);
+        }
+        println!("  Comando: {}", bold(&req.command));
+        println!(
+            "  {}",
+            yellow("Este comando terá acesso total ao sistema. A responsabilidade é sua.")
+        );
+        match req.kind {
+            ElevationKind::Password => {
+                let pw = tokio::task::spawn_blocking(|| {
+                    rpassword::prompt_password("  Senha de administrador (Enter vazio cancela): ")
+                        .unwrap_or_else(|e| {
+                            eprintln!("  não foi possível ler a senha: {e}");
+                            String::new()
+                        })
+                })
+                .await
+                .unwrap_or_default();
+                let pw = zeroize::Zeroizing::new(pw);
+                if pw.is_empty() {
+                    ElevationResponse::Denied
+                } else {
+                    ElevationResponse::Password(pw)
+                }
+            }
+            ElevationKind::SystemPrompt => {
+                print!("  O sistema vai pedir a autorização. Continuar? [s/N]: ");
+                let _ = std::io::stdout().flush();
+                let line = tokio::task::spawn_blocking(|| {
+                    let mut s = String::new();
+                    std::io::stdin().read_line(&mut s).ok();
+                    s
+                })
+                .await
+                .unwrap_or_default();
+                if matches!(
+                    line.trim().to_lowercase().as_str(),
+                    "s" | "sim" | "y" | "yes"
+                ) {
+                    ElevationResponse::Confirmed
+                } else {
+                    ElevationResponse::Denied
+                }
+            }
         }
     }
 }

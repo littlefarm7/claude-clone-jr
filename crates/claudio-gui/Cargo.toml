@@ -17,6 +17,7 @@ async-trait.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
+zeroize.workspace = true
 chrono.workspace = true
 image = { version = "0.25", default-features = false, features = ["png"] }
 eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "accesskit"] }

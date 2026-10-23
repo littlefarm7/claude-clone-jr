@@ -57,6 +57,8 @@ pub struct Settings {
     pub dirty: bool,
     mem_total_mb: u64,
     advanced: bool,
+    /// The user asked to set up voice (handled by the app).
+    pub want_voice_setup: bool,
 }
 
 impl Settings {
@@ -85,6 +87,7 @@ impl Settings {
             dirty: false,
             mem_total_mb: claudio_llm::router::detect_resources().mem_total_mb,
             advanced: false,
+            want_voice_setup: false,
         };
         s.reset(cfg);
         s
@@ -310,6 +313,34 @@ impl Settings {
             ui,
             &mut d.privacy.local_only,
             "Nunca usar IA na nuvem (nada sai do computador)",
+        )
+        .changed();
+
+        ui.add_space(8.0);
+        ui.label(RichText::new("Voz").strong());
+        let vs = claudio_tools::speech::status(d);
+        ui.horizontal_wrapped(|ui| {
+            let (txt, color) = if vs.can_listen() {
+                (
+                    if vs.uses_cloud {
+                        "Conversa por voz ativada (reconhecimento na nuvem)"
+                    } else {
+                        "Conversa por voz ativada (no computador)"
+                    },
+                    p.success,
+                )
+            } else {
+                ("Conversa por voz ainda não ativada", p.muted)
+            };
+            ui.label(RichText::new(txt).color(color));
+            if crate::theme::pill_button(ui, "🎤 Ativar / configurar voz").clicked() {
+                self.want_voice_setup = true;
+            }
+        });
+        changed |= crate::theme::toggle(
+            ui,
+            &mut d.voice.speak_replies,
+            "Ler as respostas em voz alta quando eu falar com o Claudio",
         )
         .changed();
 

@@ -115,7 +115,7 @@ fn non_interactive_denies_writes_and_admin_is_never_auto_approved() {
     let out = claudio(home.path(), &cfg, &["--yes", "run", "instale com sudo"]);
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("NEGOU") || stdout.contains("negado"),
+        stdout.contains("NEGOU") || stdout.contains("negado") || stdout.contains("NÃO autorizou"),
         "{stdout}"
     );
 }

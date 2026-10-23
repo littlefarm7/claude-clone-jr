@@ -12,10 +12,24 @@ modelo, instala e baixa tudo com uma barra de progresso. Nenhum termo técnico �
 
 ![Conversa: o Claudio mostra cada ação em linguagem simples](docs/img/conversa-escuro.png)
 
+O que ele faz no dia a dia:
+
+- **Conversa por texto e por voz em tempo real**: você fala, ele entende quando você termina, responde em voz
+  alta e volta a ouvir. O reconhecimento de voz roda no próprio computador ([docs/VOICE.md](docs/VOICE.md)).
+- **Pesquisa na internet** e cita as fontes; **usa o navegador** como você (abre sites, clica, preenche,
+  tira foto da tela) numa janela que você acompanha.
+- **Arquivos, documentos, planilhas, PDF e LaTeX**: cria, lê, edita e converte.
+- **Executa tarefas no computador**: comandos, programas, diagnóstico do sistema. Para mudanças de sistema
+  (instalar programas, configurações), mostra o comando e **pede a sua senha de administrador** —
+  com a responsabilidade do usuário.
+- **APIs e serviços externos** (`http_request`), **MCP**, automações e agendamentos.
+- **Lembra** o que for útil e **é honesto**: pesquisa quando não sabe, corrige você com educação quando algo
+  está errado, admite e corrige os próprios erros, e confere o resultado antes de dizer que terminou.
+
 - **Modelos locais** via llama.cpp (`llama-server`), sem conta e sem custo por uso. O Claudio inicia o servidor sozinho.
 - **Modelos por API** (Anthropic, Gemini, OpenAI e compatíveis), opcionais, com consentimento explícito.
 - **Segurança**: permissões por ferramenta e por risco, aprovação para ações de escrita/execução/destrutivas,
-  `sudo` nunca aprovado automaticamente, limites de diretório, isolamento com bubblewrap, proteção contra injeção
+  comandos de administrador só com a sua senha (sudo/UAC) a cada vez, limites de diretório, isolamento com bubblewrap, proteção contra injeção
   de prompt e auditoria com encadeamento de hash. Detalhes em [SECURITY.md](SECURITY.md).
 
 Documentos: [ARCHITECTURE.md](ARCHITECTURE.md) · [SECURITY.md](SECURITY.md) · [ROADMAP.md](ROADMAP.md) ·
@@ -103,12 +117,20 @@ agente não conseguem ler. Conectar é a sua autorização para enviar as conver
 
 - Escreva o pedido e tecle **Enter** (Shift+Enter pula linha). Há sugestões na tela inicial.
 - Antes de criar, mudar ou apagar algo, o Claudio **pede permissão** explicando o que vai acontecer.
+- Para falar com ele, clique no **🎤** (ou ligue **Conversa por voz**). Na primeira vez ele oferece ativar a
+  voz com um clique (~250 MB, tudo no computador).
+- Se uma tarefa precisar de administrador (por exemplo instalar um programa), aparece uma tela com o comando
+  exato: você lê, marca “assumo a responsabilidade” e digita a senha. Ela vai direto para o sistema.
 - Os arquivos que ele cria ficam na pasta **Documentos/Claudio**.
 - Tarefas longas podem ser pausadas e continuadas com **Continuar de onde parou**.
 - **Configurações** tem só o essencial (IA, pasta, permissões, privacidade, tema claro/escuro).
   Modelos, chaves e limites manuais ficam em **Mostrar opções avançadas**.
 
 ![Pedido de permissão](docs/img/permissao.png)
+
+![Autorização de administrador](docs/img/administrador.png)
+
+![Conversa por voz: ouvindo](docs/img/voz-ouvindo.png)
 
 ![Tema claro](docs/img/conversa-claro.png)
 
@@ -123,6 +145,9 @@ claudio models catalog                         # modelos locais recomendados
 claudio models download qwen2.5-7b            # baixa e passa a usar
 claudio models use-file ~/modelos/meu.gguf     # usa um .gguf existente
 claudio models use claude                      # troca o modelo padrão
+claudio voice setup                            # ativa a conversa por voz (uma vez)
+claudio voice chat                             # conversa por voz no terminal
+claudio secret set GITHUB_TOKEN                # chave usada pelo agente como {{secret:GITHUB_TOKEN}}
 ```
 
 Depois: `claudio doctor` mostra o que está instalado, e `claudio` abre a conversa no terminal.
@@ -169,10 +194,10 @@ tamanho da saída e timeout por ferramenta.
 | Grupo | Ferramentas |
 |---|---|
 | Arquivos | `read_file`, `write_file`, `edit_file`, `list_dir`, `glob`, `grep`, `delete_path` (lixeira), `move_path` |
-| Terminal | `shell` (com isolamento bubblewrap), `job_status` (segundo plano), `system_info`, `process_list` |
-| Web | `web_search` (SearXNG, Brave ou DuckDuckGo), `web_fetch` (anti‑SSRF), `browser` (Chromium headless: texto, captura, PDF) |
+| Terminal | `shell` (com isolamento bubblewrap), `admin_command` (sudo/UAC com a senha do usuário), `job_status` (segundo plano), `system_info`, `process_list` |
+| Web | `web_search` (SearXNG, Brave ou DuckDuckGo), `web_fetch` (anti‑SSRF), `browser_session` (navegador interativo: abrir, ler, clicar, digitar, capturar), `browser` (Chromium headless: texto, captura, PDF), `http_request` (APIs com chaves `{{secret:NOME}}`) |
 | Documentos | `doc_read`, `doc_create`, `doc_convert`, `latex_compile` |
-| Multimídia | `media_info`, `media_convert` (ffmpeg), `image_edit`, `ocr` (Tesseract), `transcribe` (whisper.cpp), `speak` (piper/espeak-ng) |
+| Multimídia | `media_info`, `media_convert` (ffmpeg), `image_edit`, `ocr` (Tesseract), `transcribe` (whisper.cpp embutido), `speak` (piper/espeak-ng/say/SAPI) |
 | Memória | `memory_save`, `memory_search`, `history_search` |
 | Extensões | MCP (`mcp__servidor__ferramenta`), `skill_load`, ferramentas customizadas TOML |
 | Subagentes | `delegate_task` |

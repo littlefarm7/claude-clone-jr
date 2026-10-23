@@ -183,7 +183,7 @@ pub struct MemoryConfig {
 }
 
 /// Speech: whisper.cpp for STT, piper or espeak-ng for TTS (all local).
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct VoiceConfig {
     pub whisper_bin: Option<String>,
@@ -194,6 +194,25 @@ pub struct VoiceConfig {
     pub piper_model: Option<String>,
     /// espeak-ng voice when piper is not configured
     pub espeak_voice: Option<String>,
+    /// Speech recognition: "local" (whisper.cpp built in, default) or "cloud"
+    /// (the user's OpenAI/Groq/Gemini account; audio leaves the computer).
+    pub stt: String,
+    /// Read the answers aloud in voice conversations.
+    pub speak_replies: bool,
+}
+
+impl Default for VoiceConfig {
+    fn default() -> Self {
+        Self {
+            whisper_bin: None,
+            whisper_model: None,
+            piper_bin: None,
+            piper_model: None,
+            espeak_voice: None,
+            stt: "local".into(),
+            speak_replies: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
