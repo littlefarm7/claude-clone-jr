@@ -1,8 +1,7 @@
 # whisper.cpp (built into Claudio for speech recognition) must not be tuned to
 # the build machine: target x86-64-v3 (AVX2/FMA, CPUs from ~2013 on) so the
-# same binary runs on users' computers. Bindings come pre-generated (no libclang).
+# same binary runs on users' computers.
 [env]
-WHISPER_DONT_GENERATE_BINDINGS = "1"
 GGML_NATIVE = "OFF"
 GGML_AVX = "ON"
 GGML_AVX2 = "ON"

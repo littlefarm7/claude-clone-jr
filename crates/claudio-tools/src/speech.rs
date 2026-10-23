@@ -502,8 +502,6 @@ pub struct Microphone {
     rx: tokio::sync::mpsc::UnboundedReceiver<Vec<f32>>,
     stop: Arc<AtomicBool>,
     _child: Option<tokio::process::Child>,
-    #[cfg(any(windows, target_os = "macos"))]
-    _stream: Option<cpal::Stream>,
 }
 
 impl Drop for Microphone {
@@ -572,12 +570,29 @@ impl Microphone {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         #[cfg(any(windows, target_os = "macos"))]
         if std::env::var("CLAUDIO_MIC_CMD").is_err() {
-            let stream = cpal_input(tx, stop.clone())?;
+            // cpal streams must stay on the thread that created them: keep the
+            // stream on its own thread until the microphone is dropped.
+            let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+            let stop2 = stop.clone();
+            std::thread::spawn(move || match cpal_input(tx, stop2.clone()) {
+                Ok(stream) => {
+                    let _ = ready_tx.send(Ok(()));
+                    while !stop2.load(Ordering::SeqCst) {
+                        std::thread::sleep(Duration::from_millis(50));
+                    }
+                    drop(stream);
+                }
+                Err(e) => {
+                    let _ = ready_tx.send(Err(e));
+                }
+            });
+            ready_rx
+                .recv_timeout(Duration::from_secs(10))
+                .context("o microfone não respondeu")??;
             return Ok(Self {
                 rx,
                 stop,
                 _child: None,
-                _stream: Some(stream),
             });
         }
         let recorders = linux_recorders();
@@ -620,8 +635,6 @@ impl Microphone {
                         rx,
                         stop,
                         _child: Some(child),
-                        #[cfg(any(windows, target_os = "macos"))]
-                        _stream: None,
                     });
                 }
                 Err(e) => last_err = Some(format!("{prog}: {e}")),

@@ -19,7 +19,7 @@ pub fn tool(name: &str) -> (&'static str, &'static str) {
         "web_search" => ("🌐", "Pesquisando na internet"),
         "web_fetch" => ("🌐", "Abrindo uma página da internet"),
         "browser" | "browser_session" => ("🌐", "Usando o navegador"),
-        "http_request" => ("🔗", "Conectando a um serviço na internet"),
+        "http_request" => ("🌐", "Conectando a um serviço na internet"),
         "doc_read" => ("📄", "Lendo um documento"),
         "doc_create" => ("📝", "Criando um documento"),
         "doc_convert" => ("🔄", "Convertendo um documento"),
