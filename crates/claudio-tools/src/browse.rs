@@ -86,26 +86,53 @@ impl Session {
             .kill_on_drop(true)
             .spawn()
             .with_context(|| format!("falha ao abrir {}", chrome.display()))?;
-        // Chromium prints "DevTools listening on ws://127.0.0.1:PORT/devtools/browser/ID".
+        // The DevTools port: Chromium prints "DevTools listening on
+        // ws://127.0.0.1:PORT/..." and also writes it to <profile>/DevToolsActivePort.
+        let port_file = profile.join("DevToolsActivePort");
+        let _ = std::fs::remove_file(&port_file);
         let stderr = child.stderr.take().context("stderr")?;
-        let mut lines = BufReader::new(stderr).lines();
-        let port = tokio::time::timeout(Duration::from_secs(30), async {
-            let mut tail = Vec::new();
-            while let Ok(Some(l)) = lines.next_line().await {
-                if let Some(rest) = l.split("ws://127.0.0.1:").nth(1) {
-                    let port: u16 = rest.split('/').next().unwrap_or("").parse()?;
-                    return Ok(port);
+        let tail: Arc<std::sync::Mutex<Vec<String>>> = Arc::default();
+        let (port_tx, mut port_rx) = tokio::sync::mpsc::unbounded_channel::<u16>();
+        {
+            let tail = tail.clone();
+            tokio::spawn(async move {
+                let mut lines = BufReader::new(stderr).lines();
+                while let Ok(Some(l)) = lines.next_line().await {
+                    if let Some(rest) = l.split("ws://127.0.0.1:").nth(1) {
+                        if let Ok(p) = rest.split('/').next().unwrap_or("").parse() {
+                            let _ = port_tx.send(p);
+                        }
+                    }
+                    let mut t = tail.lock().unwrap();
+                    t.push(l);
+                    if t.len() > 20 {
+                        t.remove(0);
+                    }
                 }
-                tail.push(l);
-                if tail.len() > 20 {
-                    tail.remove(0);
-                }
+            });
+        }
+        let t0 = Instant::now();
+        let port = loop {
+            if let Ok(p) = port_rx.try_recv() {
+                break p;
             }
-            bail!("o navegador fechou: {}", tail.join("\n"))
-        })
-        .await
-        .context("o navegador não respondeu em 30 s")??;
-        tokio::spawn(async move { while let Ok(Some(_)) = lines.next_line().await {} });
+            if let Some(p) = std::fs::read_to_string(&port_file)
+                .ok()
+                .and_then(|t| t.lines().next().and_then(|l| l.trim().parse::<u16>().ok()))
+            {
+                break p;
+            }
+            if let Some(status) = child.try_wait()? {
+                bail!(
+                    "o navegador fechou ({status}): {}",
+                    tail.lock().unwrap().join("\n")
+                );
+            }
+            if t0.elapsed() > Duration::from_secs(60) {
+                bail!("o navegador não respondeu em 60 s");
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        };
 
         // Use the first page target.
         let list: Value = reqwest::Client::new()
