@@ -34,6 +34,8 @@ fn spoken_raw(dir: &std::path::Path) -> Option<std::path::PathBuf> {
     Some(raw)
 }
 
+// The fake microphone is a shell command (sh); Windows uses the native microphone.
+#[cfg(unix)]
 #[tokio::test]
 async fn listens_and_transcribes() {
     let dir = tempfile::tempdir().unwrap();
@@ -95,25 +97,32 @@ async fn listens_and_transcribes() {
 async fn one_click_voice_setup_from_mirror() {
     use axum::{routing::get, Router};
     // Mirror with the recognition model, a piper package and the voice.
-    let mut tgz = Vec::new();
-    {
-        let enc = flate2::write::GzEncoder::new(&mut tgz, flate2::Compression::fast());
+    let exe = claudio_llm::platform::exe_name("piper");
+    let script = b"#!/bin/sh\necho piper\n";
+    // Same package format as the official piper release for this system.
+    let mut pkg = Vec::new();
+    if cfg!(windows) {
+        let mut z = zip::ZipWriter::new(std::io::Cursor::new(&mut pkg));
+        z.start_file(
+            format!("piper/{exe}"),
+            zip::write::SimpleFileOptions::default(),
+        )
+        .unwrap();
+        z.write_all(script).unwrap();
+        z.finish().unwrap();
+    } else {
+        let enc = flate2::write::GzEncoder::new(&mut pkg, flate2::Compression::fast());
         let mut t = tar::Builder::new(enc);
-        let script = b"#!/bin/sh\necho piper\n";
         let mut h = tar::Header::new_gnu();
         h.set_size(script.len() as u64);
         h.set_mode(0o755);
-        t.append_data(
-            &mut h,
-            format!("piper/{}", claudio_llm::platform::exe_name("piper")),
-            &script[..],
-        )
-        .unwrap();
+        t.append_data(&mut h, format!("piper/{exe}"), &script[..])
+            .unwrap();
         t.into_inner().unwrap().finish().unwrap();
     }
     let app = Router::new()
         .route("/m/{file}", get(|| async { vec![1u8; 4096] }))
-        .route("/r/{file}", get(move || async move { tgz }));
+        .route("/r/{file}", get(move || async move { pkg }));
     let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://127.0.0.1:{}", l.local_addr().unwrap().port());
     tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
